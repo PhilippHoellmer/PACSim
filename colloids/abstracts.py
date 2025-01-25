@@ -390,6 +390,28 @@ class Parameters(object):
         # noinspection PyArgumentList
         return cls(**params)
 
+    @classmethod
+    def from_dict(cls, params: dict[str, Any]) -> "Parameters":
+        """
+        Create an instance of this dataclass from a dictionary.
+
+        Instances of the _Quantity class are converted to OpenMM quantities.
+
+        :param params:
+            The parameters.
+        :type params: dict[str, Any]
+
+        :return:
+            The parameters.
+        :rtype: RunParameters
+        """
+        for key, value in params.items():
+            params[key] = cls._resolve_reference_values(params, value)
+        for key, value in params.items():
+            params[key] = cls._convert_to_openmm_quantity(value)
+        # noinspection PyArgumentList
+        return cls(**params)
+
     @staticmethod
     def _resolve_reference_values(base_params: dict[str, Any], value: Any) -> Any:
         """Recursively resolve references to other parameters in the base_params dictionary."""
