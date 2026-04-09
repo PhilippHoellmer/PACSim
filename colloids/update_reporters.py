@@ -870,6 +870,8 @@ class RampUpdateReporterUntilCluster(GlobalParameterUpdateReporterAbstract):
         if step % self._check_interval == 0 and not self._cluster_reached:
             state = simulation.context.getState(getPositions=True)
             positions = state.getPositions(asNumpy=True).value_in_unit(length_unit)[self._mask]
+            if self._freud_box.periodic[0] or self._freud_box.periodic[1] or self._freud_box.periodic[2]:
+                positions = freud.box.Box.from_box(self._freud_box).wrap(positions)
             self._freud_cluster.compute((self._freud_box, positions),
                                         neighbors={'r_max': self._cutoff_distance, "exclude_ii": True})
             # noinspection PyTypeChecker

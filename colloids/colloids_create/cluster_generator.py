@@ -2,7 +2,7 @@ from math import acos, pi
 from random import choices, uniform
 import re
 from typing import Sequence, Union
-from ase import Atoms
+from ase import Atoms, cell
 from gsd.hoomd import Frame
 import numpy as np
 from colloids.colloids_create import ConfigurationGenerator
@@ -162,86 +162,158 @@ class ClusterGenerator(ConfigurationGenerator):
         else:
             r = self._lattice_repeats
 
-        repeated_cluster = None
-        bond_pairs = []
         # All cells are assumed to be the same so we can use the first one.
         cell = centered_padded_clusters[0].get_cell()
-        # Adapted from ase's repeat function.
-        i0 = 0
-        for r0 in range(r[0]):
-            for r1 in range(r[1]):
-                for r2 in range(r[2]):
-                    new_cluster = choices(centered_padded_clusters, weights=self._cluster_relative_weights,
-                                          k=1)[0].copy()
-                    if self._random_rotation:
-                        # Generate uniformly randomized rotations.
-                        # See Properties section here: https://en.wikipedia.org/wiki/Euler_angles
-                        random_phi_deg = uniform(0.0, 2.0 * pi) * 180.0 / pi  # alpha on Wikipedia.
-                        random_theta_deg = acos(uniform(-1.0, 1.0)) * 180.0 / pi  # beta on Wikipedia.
-                        random_psi_deg = uniform(0.0, 2.0 * pi) * 180.0 / pi  # gamma on Wikipedia.
-                        new_cluster.euler_rotate(phi=random_phi_deg, theta=random_theta_deg, psi=random_psi_deg,
-                                                    center="COP")
-                    unwrapped_positions = new_cluster.get_positions(wrap=False)
-                    if self._random_rotation:
-                        wrapped_positions = new_cluster.get_positions(wrap=True)
-                        if not np.allclose(wrapped_positions, unwrapped_positions):
-                            raise ValueError("Parts of the rotated cluster lie outside the original box, increase the "
-                                             "rotation padding distance to allow for rotations.")
-                    # Translate the unwrapped positions of the new cluster to the correct repeat.
-                    unwrapped_positions += np.dot((r0, r1, r2), cell)
-                    if repeated_cluster is None:
-                        # If this is the first cluster, we create the repeated cluster.
-                        assert r0 == r1 == r2 == i0 == 0
-                        repeated_cluster = new_cluster.copy()
-                        if "bonds" in repeated_cluster.arrays:
-                            # Extract the bonds and adjust the indices to account for the repetitions.
-                            bond_pairs += [(first_index, second_index)
-                                           for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
-                                           for second_index in self._extract_bonded_indices(bonds)]
-                    else:
-                        # Concatenate the arrays of the new cluster to the repeated cluster.
-                        for name, a in new_cluster.arrays.items():
-                            if name != "bonds":
-                                repeated_cluster.arrays[name] = np.concatenate((repeated_cluster.arrays[name], a),
-                                                                               axis=0)
-                            else:
-                                # For the bonds, we need to adjust the indices to account for the repetitions.
-                                bond_pairs += [(first_index + i0, second_index + i0)
-                                               for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
-                                               for second_index in self._extract_bonded_indices(bonds)]
-                        # Set the positions of the repeated cluster to the unwrapped positions.
-                        repeated_cluster.arrays["positions"][i0:i0 + len(new_cluster)] = unwrapped_positions
-                    i0 += len(new_cluster)
+        individual_cell = np.array([self._padding_factor * cell[c] for c in range(3)])
 
-        # Enlarge the cell of the repeated cluster.
-        repeated_cluster.set_cell(np.array([self._padding_factor * r[c] * cell[c] for c in range(3)]) )
-        repeated_cluster.center(about=(0.0, 0.0, 0.0))
+        final_types_list = tuple(sorted(list(set([str(atom.number) for cluster_types in centered_padded_clusters for atom in cluster_types]))))
+
+        # Generate a grid of displacement indices to be applied to the repeated clusters in each direction.
+        cell_indices_x, cell_indices_y, cell_indices_z = np.meshgrid(range(r[0]), range(r[1]), range(r[2]), indexing="ij") # Shape: (r[0], r[1], r[2])
+        cell_indices = np.stack((cell_indices_x, cell_indices_y, cell_indices_z), axis=-1) # Shape: (r[0], r[1], r[2], 3)
+
+        # Create the actual displacements by multiplying the cell vectors with the grid of displacement indices.
+        position_displacements = np.einsum("ij,xyzj->xyzi", cell, cell_indices) # Shape: (r[0], r[1], r[2], 3)
+
+        # We need to pad the wrapped positions of the clusters, types, and bonds to be able to apply the random rotations to them.
+        # The padding value is set to infinity so that any positions outside the original box are easily identified.
+        max_cluster_size = max(len(c) for c in centered_padded_clusters)
+        zero_min_positions = [c.get_positions(wrap=False) - np.min(c.get_positions(wrap=False), axis=0) for c in centered_padded_clusters]
+        wrapped_positions_padded = np.array([np.pad(wrapped, ((0, max_cluster_size - len(wrapped)), (0, 0)), mode="constant", constant_values=np.nan) 
+                                                   for wrapped in zero_min_positions])
+        type_ids = [np.array([final_types_list.index(str(atom.number)) for atom in c], dtype=float) for c in centered_padded_clusters]
+        type_ids_padded = np.array([np.pad(type_ids[i], (0, max_cluster_size - len(c)), mode="constant", constant_values=np.nan)
+                                       for i, c in enumerate(centered_padded_clusters)])        
+
+        bond_pairs = []
+        bond_values = []
+        bond_pair_offset_indices_count = []
+
+        for c in centered_padded_clusters:
+            if "bonds" not in c.arrays or len(c.arrays["bonds"]) == 0:
+                bond_pairs += [np.empty((0, 2), dtype=float)]
+                bond_values += [np.empty((0,), dtype=float)]
+                bond_pair_offset_indices_count += [0]
+                continue
+            
+            bond_pair = [(first_index, second_index) 
+                         for first_index, bonds in enumerate(c.arrays["bonds"]) 
+                         for second_index in self._extract_bonded_indices(bonds)]
+            bond_pairs += [np.array(bond_pair, dtype=float)]
+            bond_values += [np.array([c.get_distance(first_index, second_index) for first_index, second_index in bond_pair], dtype=float)]
+            bond_pair_offset_indices_count += [len(bond_pair)]
+
+        max_n_bonds = max(bond_pair_offset_indices_count) if bond_pair_offset_indices_count else 0
+        bond_pairs_padded = np.array([np.pad(bond_pair, ((0, max_n_bonds - bond_pair.shape[0]), (0, 0)), mode="constant", constant_values=np.nan)
+                                           for bond_pair in bond_pairs])
+        bond_values_padded = np.array([np.pad(bond_value, (0, max_n_bonds - bond_value.size), mode="constant", constant_values=np.nan)
+                                           for bond_value in bond_values])
+
+        if bond_values_padded.ndim == 1:
+            bond_values_padded = bond_values_padded[np.newaxis, :]
+                
+        # The offset for the bond pairs of the next cluster should repeat for each bond in the cluster its value
+        # is given by the number of particles in the current cluster.
+        bond_pair_offset_indices_padded = np.array([np.pad(np.ones(bond_pair_offset_index_count, dtype=float), (0, max_n_bonds - bond_pair_offset_index_count),
+                                                           mode="constant", constant_values=np.nan)for bond_pair_offset_index_count in bond_pair_offset_indices_count])
+        bond_pair_offset_values = np.array([len(c) for c in centered_padded_clusters]) 
+
+        # Select a cluster for each displacement based on the relative weights of the clusters.
+        cluster_selections = np.random.choice(len(centered_padded_clusters), size=r, p=self._cluster_relative_weights)
+
+        # Assign the positions and types of the selected clusters to the corresponding displacements. The positions and bonds of the
+        # clusters are padded to the same size so that they can be indexed by the cluster selections. Offsets must be applied to positions and
+        # bond pairs to account for the displacements of the clusters. The bond values and types do not need to be modified as they are just 
+        # the bond lengths in the original cluster definition.
+        positions = wrapped_positions_padded[cluster_selections] # Shape: (r[0], r[1], r[2], max_cluster_size, 3)
+        type_ids = type_ids_padded[cluster_selections] # Shape: (r[0], r[1], r[2], max_cluster_size)    
+
+        if self._random_rotation:
+            # Test to see if any positions in the clusters are outside the unit cell. If so, random rotations cannot be applied as 
+            # they could cause some colloids to be outside the box. In this case, an error is raised and the user should increase 
+            # the cluster padding factor to allow for rotations.
+            outside_unit_cell = np.any((np.linalg.norm(zero_min_positions, axis=-1)[:, np.newaxis] - 0.5 * np.linalg.norm(individual_cell, axis=-1))[np.newaxis, :] > 0)
+            if outside_unit_cell:
+                raise ValueError("Some positions in the centered and padded clusters are outside of the unit cell. "
+                                 "Random rotations cannot be applied as they could cause some colloids to be outside the box. "
+                                 "Increase the cluster padding factor to allow for rotations.")
+
+            # Generate uniformly randomized rotations for each cluster and apply them to the unwrapped positions of the clusters.
+            # See Properties section here: https://en.wikipedia.org/wiki/Rotation_matrix
+            random_rotation_matrices = np.random.rand(r[0], r[1], r[2], 3, 3) # Shape: (r[0], r[1], r[2], 3, 3)
+            u, _, vh = np.linalg.svd(random_rotation_matrices)
+            random_rotation_matrices = u @ vh # Shape: (r[0], r[1], r[2], 3, 3)
+            positions = positions @ random_rotation_matrices # Shape: (r[0], r[1], r[2], max_cluster_size, 3)
+
+        positions += position_displacements[:, :, :, np.newaxis, :] # Shape: (r[0], r[1], r[2], max_cluster_size, 3)
+        
+        # Reshape the positions and types to be a list of positions and types for all clusters in all displacements. 
+        # Remove any positions that are NaN (i.e., padding values).
+        final_positions = positions.reshape(-1, 3) # Shape: (r[0] * r[1] * r[2] * max_cluster_size, 3)
+        final_positions = final_positions[~np.any(np.isnan(final_positions), axis=1)]
+        final_type_ids = type_ids[~np.isnan(type_ids)].astype(int)
+
+        # Set the cell of the repeated cluster.
+        full_cell = individual_cell * r
+
+        # Shift the positions so that the center of the box is at the origin.
+        final_positions -= (np.max(final_positions, axis=0) - np.min(final_positions, axis=0)) / 2
 
         frame = Frame()
-        frame.particles.N = len(repeated_cluster)
-        frame.particles.types = tuple(set(str(atom.number) for atom in repeated_cluster))
-        frame.particles.typeid = np.array([frame.particles.types.index(str(atom.number))
-                                           for atom in repeated_cluster], dtype=np.uint32)
-        frame.particles.position = repeated_cluster.positions.astype(np.float32)
+        frame.particles.N = len(final_positions)
+        frame.particles.types = final_types_list
+
+        frame.particles.typeid = np.array(final_type_ids, dtype=np.uint32)
+        frame.particles.position = final_positions.astype(np.float32)
         # See http://docs.openmm.org/7.6.0/userguide/theory/05_other_features.html
         # See https://hoomd-blue.readthedocs.io/en/v2.9.3/box.html
         frame.configuration.box = np.array(
-            [repeated_cluster.cell[0][0], repeated_cluster.cell[1][1], repeated_cluster.cell[2][2],
-             repeated_cluster.cell[1][0] / repeated_cluster.cell[1][1],
-             repeated_cluster.cell[2][0] / repeated_cluster.cell[2][2],
-             repeated_cluster.cell[2][1] / repeated_cluster.cell[2][2]], dtype=np.float32)
+            [full_cell[0][0], full_cell[1][1], full_cell[2][2],
+             full_cell[1][0] / full_cell[1][1],
+             full_cell[2][0] / full_cell[2][2],
+             full_cell[2][1] / full_cell[2][2]], dtype=np.float32)
 
-        if len(bond_pairs) > 0:
-            all_distances = repeated_cluster.get_all_distances()
-            all_constraints = np.array(bond_pairs, dtype=np.uint32)
-            all_values = np.array([all_distances[first_index, second_index]
-                                   for first_index, second_index in bond_pairs], dtype=np.float32)
-            frame.constraints.N = len(bond_pairs)
+        if bond_values_padded.size > 0:
+            # Assign the positions and types of the selected clusters to the corresponding displacements. The positions and bonds of the
+            # clusters are padded to the same size so that they can be indexed by the cluster selections. Offsets must be applied to positions and
+            # bond pairs to account for the displacements of the clusters. The bond values and types do not need to be modified as they are just 
+            # the bond lengths in the original cluster definition.
+            bond_pairs = bond_pairs_padded[cluster_selections] # Shape: (r[0], r[1], r[2], max_n_bonds, 2)
+            bond_values = bond_values_padded[cluster_selections] # Shape: (r[0], r[1], r[2], max_n_bonds)
+            bond_pair_offset_values = bond_pair_offset_values[cluster_selections] # Shape: (r[0], r[1], r[2])
+            bond_pair_offset_indices = bond_pair_offset_indices_padded[cluster_selections] # Shape: (r[0], r[1], r[2], max_n_bonds)
+        
+            # Reshape the bonds to be a list of positions and types for all clusters in all displacements. 
+            # Remove any positions that are NaN (i.e., padding values).
+            final_bond_values = bond_values.reshape(-1) # Shape: (r[0] * r[1] * r[2] * max_n_bonds,)
+            final_bond_values = final_bond_values[~np.isnan(final_bond_values)]
+
+            # The offset that should be applied to the bond pairs associated with each cluster is given by the cumulative 
+            # sum of the number of particles in the previous clusters. 
+            bond_pair_offset_values = np.cumsum(bond_pair_offset_values.reshape(-1)) - max_cluster_size # Shape: (r[0] * r[1] * r[2],)
+
+            # Get the indices for the bond pair offset indices
+            bond_pair_offset_indices = (bond_pair_offset_indices * np.arange(r[0] * r[1] * r[2]).reshape(r)[:, :, :, np.newaxis]).reshape(-1) # Shape: (r[0] * r[1] * r[2] * max_n_bonds)
+            bond_pair_offset_indices = bond_pair_offset_indices[~np.isnan(bond_pair_offset_indices)].astype(int)
+
+            bond_pair_offsets = bond_pair_offset_values[bond_pair_offset_indices] # Shape: (n_bonds,)
+
+            # Reshape the bond pairs to be a list of bond pairs for all clusters in all displacements. 
+            # Remove any bond pairs that are NaN (i.e., padding values).
+            # Apply the offsets to the bond pairs to get the correct indices for the repeated clusters. 
+            bond_pairs = bond_pairs.reshape(-1, 2) # Shape: (r[0] * r[1] * r[2] * max_n_bonds, 2)
+            bond_pairs = bond_pairs[~np.any(np.isnan(bond_pairs), axis=1)].astype(int) 
+
+            final_bond_pairs = bond_pairs + bond_pair_offsets[:, np.newaxis] # Shape: (n_bonds, 2)
+
+            all_constraints = np.array(final_bond_pairs, dtype=np.uint32)
+            all_values = np.array(final_bond_values, dtype=np.float32)
+            frame.constraints.N = len(final_bond_pairs)
             frame.constraints.group = all_constraints
             frame.constraints.value = all_values
 
             # Useful for visualization although not necessary for the simulation.
-            frame.bonds.N = len(bond_pairs)
+            frame.bonds.N = len(final_bond_pairs)
             frame.bonds.types = ["b"]
             frame.bonds.typeid = np.zeros(frame.bonds.N, dtype=np.uint32)
             frame.bonds.group = all_constraints
