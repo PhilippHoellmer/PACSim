@@ -136,23 +136,23 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             assert (not parameters.use_depletion
                     or parameters.depletant_radius
                     > (parameters.cutoff_factor * parameters.debye_length - 2.0 * parameters.brush_length) / 2.0)
-            for index, wall_direction in enumerate(parameters.wall_directions):
-                if wall_direction:
-                    # The shifted Lennard Jones walls diverge at distance r = radius - 1 from the location of the wall,
-                    # where radius is the radius of the particle. The minimum distance between periodic images through
-                    # a wall is thus 2 * radius_min - 2, where radius_min is the smallest radius in the system.
-                    # The maximum cutoff of the electrostatic interactions is
-                    # 2 * radius_max + cutoff_factor * debye_length. In order to prevent particles from interacting
-                    # through the walls, we thus increase the length of the periodic box vectors (not the wall) by
-                    # 2 * (radius_max - radius_min) + 2 + cutoff_factor * debye_length.
-                    final_cell[index][index] += \
-                        (2.0 * (max(radii) - min(radii)) + 2.0 * length_unit
-                         + parameters.cutoff_factor * parameters.debye_length).value_in_unit(length_unit)
+        for index, wall_direction in enumerate(parameters.wall_directions):
+            if wall_direction:
+                # The shifted Lennard Jones walls diverge at distance r = radius - 1 from the location of the wall,
+                # where radius is the radius of the particle. The minimum distance between periodic images through
+                # a wall is thus 2 * radius_min - 2, where radius_min is the smallest radius in the system.
+                # The maximum cutoff of the electrostatic interactions is
+                # 2 * radius_max + cutoff_factor * debye_length. In order to prevent particles from interacting
+                # through the walls, we thus increase the length of the periodic box vectors (not the wall) by
+                # 2 * (radius_max - radius_min) + 2 + cutoff_factor * debye_length.
+                final_cell[index][index] += \
+                    (2.0 * (max(radii) - min(radii)) + 2.0 * length_unit
+                        + parameters.cutoff_factor * parameters.debye_length).value_in_unit(length_unit)
     else:
         wall_distances = None
         final_cell = cell
 
-    if not all_walls:
+    if not all_walls and if parameters.use_pbc:
         topology.setPeriodicBoxVectors(final_cell)
         system.setDefaultPeriodicBoxVectors(openmm.Vec3(*final_cell[0]), openmm.Vec3(*final_cell[1]),
                                             openmm.Vec3(*final_cell[2]))

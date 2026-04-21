@@ -181,6 +181,10 @@ class RunParameters(Parameters):
         If any of the wall directions is active, epsilon and alpha must be specified.
         Defaults to [False, False, False].
     :type wall_directions: list[bool]
+    :param use_pbc:
+        If True, use periodic boundary conditions in the simulation.
+        Defaults to True.
+    :type use_pbc: bool
     :param epsilon:
         The unshifted Lennard-Jones potential well-depth for closed-wall simulations with shifted Lennard-Jones
         potential walls.
@@ -307,6 +311,7 @@ class RunParameters(Parameters):
     epsilon: Optional[unit.Quantity] = None
     alpha: Optional[float] = None
     wall_directions: list[bool] = field(default_factory=lambda: [False, False, False])
+    use_pbc: bool = True
     use_implicit_substrate: bool = False
     substrate_wall_charge: Optional[unit.Quantity] = None
     use_depletion: bool = False

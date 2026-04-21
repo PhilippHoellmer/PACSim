@@ -1,0 +1,31 @@
+cluster_specifications:
+- "output.lmp"
+cluster_relative_weights:  # Optional section
+  - 1.0
+lattice_repeats: 1
+cluster_padding_factor: 1.0
+padding_factor: 1.0
+masses:
+  "1": !Quantity
+    unit: dalton
+    value: 1.884998982291879
+  "2": !Quantity
+    unit: dalton
+    value: 1.0
+radii:
+  "1": !Quantity
+    unit: nanometer
+    value: 102.0
+  "2": !Quantity
+    unit: nanometer
+    value: 120.0
+surface_potentials:
+  "1": !Quantity
+    unit: millivolt
+    value: 25.0
+  "2": !Quantity
+    unit: millivolt
+    value: -45.0
+use_substrate: false
+substrate_type: null
+random_rotation: false

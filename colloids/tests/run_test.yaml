@@ -71,6 +71,7 @@ use_implicit_substrate: false
 substrate_wall_charge: null
 use_gravity: true
 use_log: false
+use_pbc: true
 use_plumed: false
 velocity_seed: 2
 wall_directions:

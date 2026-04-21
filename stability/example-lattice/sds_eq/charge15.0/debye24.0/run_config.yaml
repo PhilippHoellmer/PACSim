@@ -1,0 +1,31 @@
+cif: structure.cif
+
+
+resize:
+  brush_length: 10.0
+  supercell: [6, 6, 6]
+  spacing: 15.0
+  scale_factor: 0.5
+  scale_start: 50.0
+
+outputs:
+  lammps: "lattice.lmp"
+
+# Input file (can be .gsd or .lmp)
+input_file: lattice.lmp
+
+# Output file for optimized positions
+output_file: first_frame.gsd
+
+# Particle parameters (optional; default values used if omitted)
+r_pos: 5.0       # radius of positive particle in nanometers
+r_neg: 5.0       # radius of negative particle in nanometers
+q_pos: 1.0       # surface potential of positive particle in millivolts
+q_neg: -1.0      # surface potential of negative particle in millivolts
+
+# Lattice optimization options
+optimize_lattice: true
+scale_rate: 0.005
+
+# OpenMM platform
+platform_name: Reference
