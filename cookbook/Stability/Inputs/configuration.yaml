@@ -1,0 +1,37 @@
+configuration_generator: LatticeBuilder
+configuration_generator_parameters:
+  lattice_specification: CsCl.cif
+  lattice_repeats: 15
+  run_parameters_file: run.yaml
+  radii_padding: !Quantity
+    unit: nanometer
+    value: 20.0 
+  lattice_padding: !Quantity
+    unit: nanometer
+    value: 1000
+  optimize_energy: true
+masses:
+  "Cs": !Quantity
+    unit: dalton
+    value: 1.0
+  "Cl": !Quantity
+    unit: dalton
+    value: 1.0
+radii:
+  "Cs": !Quantity
+    unit: nanometer
+    value: 85.0
+  "Cl": !Quantity
+    unit: nanometer
+    value: 105.0
+surface_potentials:
+  "Cs": !Quantity
+    unit: millivolt
+    value: 50.0
+  "Cl": !Quantity
+    unit: millivolt
+    value: -50.0
+initial_modifiers: null
+initial_modifiers_parameters: null
+final_modifiers: null
+final_modifiers_parameters: null

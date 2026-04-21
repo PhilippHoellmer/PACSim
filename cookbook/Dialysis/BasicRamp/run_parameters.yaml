@@ -1,0 +1,62 @@
+update_reporter: RampUpdateReporter
+update_reporter_parameters:
+  filename: ramp_update_reporter.csv
+  parameter_name: debye_length
+  start_value: !Quantity
+    unit: nanometer
+    value: 4.5
+  end_value: !Quantity
+    unit: nanometer
+    value: 5.5
+  final_update_step: 100000000
+  update_interval: 1000000
+  print_interval: 1000000
+integrator: LangevinIntegrator
+integrator_parameters:
+  frictionCoeff: !Quantity
+    unit: /picosecond
+    value: 0.001574074286750681
+  randomNumberSeed: 3
+  stepSize: !Quantity
+    unit: picosecond
+    value: 0.0317647015
+  temperature: !Copy
+    key: potential_temperature
+potential_temperature: !Quantity
+  unit: kelvin
+  value: 298.0
+dielectric_constant: 80.0
+debye_length: !Quantity
+  unit: nanometer
+  value: 4.5
+brush_density: !Quantity
+  unit: /(nanometer**2)
+  value: 0.09
+brush_length: !Quantity
+  unit: nanometer
+  value: 10.0
+cutoff_factor: 21.0
+steric_radius_average: harmonic
+wall_directions:
+  - true
+  - true
+  - true
+alpha: 1.0
+epsilon: !Quantity
+    unit: kilojoule/mole
+    value: 2.477709860209665
+run_steps: 100000000
+checkpoint_interval: 1000000
+state_data_interval: 10000
+trajectory_interval: 1000000
+state_data_filename: state_data.csv
+trajectory_filename: trajectory.gsd
+checkpoint_filename: checkpoint.chk
+final_configuration_gsd_filename: final_frame.gsd
+initial_configuration: initial_configuration.gsd
+platform_name: CUDA
+minimize_energy_initially: false
+use_depletion: false
+use_gravity: false
+use_plumed: false
+velocity_seed: 5

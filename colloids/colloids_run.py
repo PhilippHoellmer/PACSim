@@ -152,7 +152,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         wall_distances = None
         final_cell = cell
 
-    if not all_walls and if parameters.use_pbc:
+    if not all_walls and parameters.use_pbc:
         topology.setPeriodicBoxVectors(final_cell)
         system.setDefaultPeriodicBoxVectors(openmm.Vec3(*final_cell[0]), openmm.Vec3(*final_cell[1]),
                                             openmm.Vec3(*final_cell[2]))
@@ -180,7 +180,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
 
     if include_walls:
         slj_walls = ShiftedLennardJonesWalls(wall_distances, parameters.epsilon, parameters.alpha,
-                                             parameters.wall_directions, use_substrate)
+                                             parameters.wall_directions, use_substrate, use_pbc=parameters.use_pbc)
     else:
         slj_walls = None
 

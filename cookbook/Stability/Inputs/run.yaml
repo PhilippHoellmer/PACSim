@@ -1,0 +1,77 @@
+alpha: 1.0
+brush_density: !Quantity
+  unit: /(nanometer**2)
+  value: 0.09
+brush_length: !Quantity
+  unit: nanometer
+  value: 10.0
+checkpoint_filename: checkpoint.chk
+checkpoint_interval: 500000000
+cutoff_factor: 21.0
+debye_length: !Quantity
+  unit: nanometer
+  value: 5.0
+depletant_radius: null
+depletion_phi: null
+dielectric_constant: 80.0
+electrostatic_radius_average: harmonic
+epsilon: !Quantity
+    unit: kilojoule/mole
+    value: 2.477709860209665  # 1 k_B T
+final_configuration_gsd_filename: final_frame.gsd
+gravitational_acceleration: !Quantity
+    unit: meter/(second**2)
+    value: 9.8
+initial_configuration: first_frame.gsd
+integrator: LangevinIntegrator
+integrator_parameters:
+  frictionCoeff: !Quantity
+    unit: /picosecond
+    value: 1.0
+  randomNumberSeed: 3
+  stepSize: !Quantity
+    unit: picosecond
+    value: 0.3
+  temperature: !Copy
+    key: potential_temperature
+minimize_energy_initially: false
+particle_density: !Quantity
+  unit: gram/(centimeter**3)
+  value: 1.05
+platform_name: CPU
+plumed_script: null
+potential_temperature: !Quantity
+  unit: kelvin
+  value: 29.80
+run_steps: 1000000
+state_data_filename: state_data.csv
+state_data_interval: 5000
+steric_radius_average: harmonic
+trajectory_filename: trajectory.gsd
+trajectory_interval: 5000
+update_reporter: RampTemperatureUpdateReporter
+update_reporter_parameters: 
+  filename: update_reporter.csv
+  update_interval: 500
+  print_interval: !Copy
+    key: state_data_interval
+  final_update_step: 10000
+  start_value: !Copy
+    key: potential_temperature
+  end_value: !Quantity
+    unit: kelvin
+    value: 298.0
+use_depletion: false
+use_implicit_substrate: false
+substrate_wall_charge: null
+use_gravity: true
+use_log: false
+use_plumed: false
+velocity_seed: 2
+wall_directions:
+  - true
+  - true
+  - true
+water_density: !Quantity
+  unit: gram/(centimeter**3)
+  value: 0.998

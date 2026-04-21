@@ -1,0 +1,24 @@
+UNITS LENGTH=nm TIME=ps ENERGY=kj/mol
+#https://www.plumed.org/doc-master/user-doc/html/COORDINATIONNUMBER/
+
+c_all: COORDINATIONNUMBER SPECIES=@mdatoms SWITCH={EXP D_0=300.0 R_0=50 D_MAX=400} MEAN
+
+METAD ...
+  ARG=c_all.mean
+  CALC_RCT
+  HEIGHT=1.0
+  BIASFACTOR=50
+  SIGMA=0.5
+  PACE=100
+  TEMP=300
+  GRID_MIN=0
+  GRID_MAX=20
+  GRID_BIN=201
+  GRID_WFILE=grid.dat
+  FILE=hills.dat
+  GRID_WSTRIDE=10000
+  LABEL=metad
+  STRIDE=2
+... METAD
+
+PRINT ARG=c_all.mean,metad.* FILE=bias STRIDE=10000
