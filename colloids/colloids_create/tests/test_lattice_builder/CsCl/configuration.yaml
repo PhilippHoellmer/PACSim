@@ -1,0 +1,43 @@
+cif: CsCl.cif
+cluster_specifications: 
+ - "cluster.lmp"
+cluster_relative_weights:
+  - 1.0
+lattice_repeats: 1
+cluster_padding_factor: 3.0
+padding_factor: 1.0
+lattice_scale_factor: 0.5
+lattice_scale_start: 50.0 
+lattice_vector_scaling_matrix: [6, 6, 6]
+radii_padding_factor: !Quantity
+    unit: nanometer
+    value: 5.0
+masses:
+  "1": !Quantity
+    unit: dalton
+    value: 1.0
+  "2": !Quantity
+    unit: dalton
+    value: 1.0
+radii:
+  "1": !Quantity
+    unit: nanometer
+    value: 85.0
+  "2": !Quantity
+    unit: nanometer
+    value: 105.0
+surface_potentials:
+  "1": !Quantity
+    unit: millivolt
+    value: 50.0
+  "2": !Quantity
+    unit: millivolt
+    value: -50.0
+brush_length: !Quantity
+    unit: nanometer
+    value: 10.0
+random_rotation: false
+initial_modifiers: null
+initial_modifiers_parameters: null
+final_modifiers: null
+final_modifiers_parameters: null

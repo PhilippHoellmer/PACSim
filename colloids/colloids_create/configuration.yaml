@@ -1,10 +1,13 @@
-cluster_specifications: 
- - "cluster.lmp"
-cluster_relative_weights:
-  - 1.0
-lattice_repeats: 2
-cluster_padding_factor: 3.0
-padding_factor: 1.5
+configuration_generator: ClusterGenerator
+configuration_generator_parameters:
+  cluster_specifications:
+    - "cluster.lmp"
+  cluster_relative_weights:
+    - 1.0
+  lattice_repeats: 2
+  cluster_padding_factor: 3.0
+  padding_factor: 1.5
+  random_rotation: true
 masses:
   "1": !Quantity
     unit: dalton
@@ -35,7 +38,6 @@ surface_potentials:
   "3": !Quantity
     unit: millivolt
     value: 40.0
-random_rotation: true
 initial_modifiers: null
 initial_modifiers_parameters: null
 final_modifiers: null

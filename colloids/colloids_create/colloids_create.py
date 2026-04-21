@@ -1,12 +1,11 @@
 import argparse
 import inspect
 import warnings
-from ase.io.lammpsdata import read_lammps_data
 import gsd.hoomd
 import numpy as np
 from openmm import unit
 from colloids.colloids_create.configuration_parameters import ConfigurationParameters
-from colloids.colloids_create.cluster_generator import ClusterGenerator
+import colloids.colloids_create.configuration_generators as configuration_generators
 import colloids.colloids_create.final_modifiers as final_modifiers
 import colloids.colloids_create.initial_modifiers as initial_modifiers
 from colloids.units import electric_potential_unit, length_unit, mass_unit
@@ -112,18 +111,35 @@ def main():
 
     configuration_parameters = ConfigurationParameters.from_yaml(args.configuration_parameters)
 
-    # We assume that the lammps-data file uses "nano" units where distances are measured in nanometers.
-    # However, ase would transform the distances in the lammps-data file to Angstroms by multiplying them by 10 if
-    # we specify units="nano". For units="metal", the ase distances are equal to the distances in the lammps-data
-    # file. We then just pretend that the distances are in nanometers.
-    clusters = [read_lammps_data(spec, units="metal") for spec in configuration_parameters.cluster_specifications]
-    generator = ClusterGenerator(clusters, configuration_parameters.cluster_relative_weights,
-                                 configuration_parameters.lattice_repeats,
-                                 configuration_parameters.cluster_padding_factor,
-                                 configuration_parameters.padding_factor,
-                                 configuration_parameters.random_rotation)
+    # Instantiate the configuration generator from the YAML-specified class name and parameters.
+    generator_class = getattr(configuration_generators, configuration_parameters.configuration_generator)
+    try:
+        generator = generator_class(configuration_parameters.masses, configuration_parameters.radii,
+                                    configuration_parameters.surface_potentials,
+                                    **configuration_parameters.configuration_generator_parameters)
+    except TypeError as e:
+        raise TypeError(
+            f"Generator {configuration_parameters.configuration_generator} does not accept the given arguments "
+            f"{configuration_parameters.configuration_generator_parameters}. "
+            f"The expected signature is {inspect.signature(generator_class)} (the masses, radii, and "
+            f"surface_potentials arguments should not be specified).") from e
 
+    generator_types = generator.types()
+    for t in generator_types:
+        if t not in configuration_parameters.masses:
+            raise ValueError(f"Type {t} of the atoms in the configuration generator is not in masses dictionary.")
+        if t not in configuration_parameters.radii:
+            raise ValueError(f"Type {t} of the atoms in the configuration generator is not in radii dictionary.")
+        if t not in configuration_parameters.surface_potentials:
+            raise ValueError(f"Type {t} of the atoms in the configuration generator is not in surface potentials "
+                             f"dictionary.")
+    # Masses, radii, and surface potentials dictionaries contain the same types (see configuration_parameters.py).
+    for t in configuration_parameters.masses:
+        if t not in generator_types:
+            warnings.warn(f"Type {t} of the masses/radii/surface potentials dictionary is not in the configuration "
+                          f"generator.")
     frame = generator.generate_configuration()
+    
     _check_frame_changes(frame, generator.__class__.__name__)
 
     # Apply initial modifiers before setting particle properties.
@@ -138,11 +154,11 @@ def main():
                                           configuration_parameters.surface_potentials, **modifier_params)
                 modifier.modify_configuration(frame)
                 _check_frame_changes(frame, modifier.__class__.__name__)
-            except TypeError:
+            except TypeError as e:
                 raise TypeError(
                     f"Modifier {modifier_name} does not accept the given arguments {modifier_params}. "
                     f"The expected signature is {inspect.signature(modifier_class)} (the masses, radii, and "
-                    f"surface_potentials arguments should not be specified).")
+                    f"surface_potentials arguments should not be specified).") from e
 
     # Check if the frame has the necessary attributes.
     check_frame_types(frame, configuration_parameters.masses, configuration_parameters.radii,
@@ -167,10 +183,10 @@ def main():
             try:
                 modifier = modifier_class(**modifier_params)
                 modifier.modify_configuration(frame)
-            except TypeError:
+            except TypeError as e:
                 raise TypeError(
                     f"Modifier {modifier_name} does not accept the given arguments {modifier_params}. "
-                    f"The expected signature is {inspect.signature(modifier_class)}.")
+                    f"The expected signature is {inspect.signature(modifier_class)}.") from e
 
     with gsd.hoomd.open(name=args.save_file, mode="w") as f:
         f.append(frame)

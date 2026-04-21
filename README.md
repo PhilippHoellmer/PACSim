@@ -25,6 +25,8 @@ The following packages are required:
 - hoomd == 2.9.7
 - plumed == 2.9.0
 - openmm-plumed v2
+- scipy >= 1.16.1
+- pymatgen >= 2024.10.3
 
 Note that some PLUMED modules that are necessary for functionality such as calculation of local order parameters and adjacency matrices are not compiled by default, but can be enabled during configuration. 
 We recommend enabling the crystallization, multicolvar, and adjmat modules when compiling:

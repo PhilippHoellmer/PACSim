@@ -2,10 +2,16 @@ from math import acos, pi
 from random import choices, uniform
 import re
 from typing import Sequence, Union
+<<<<<<< HEAD:colloids/colloids_create/cluster_generator.py
 from ase import Atoms, cell
+=======
+import warnings
+from ase.io.lammpsdata import read_lammps_data
+>>>>>>> upstream/lattice_builder:colloids/colloids_create/configuration_generators/cluster_generator.py
 from gsd.hoomd import Frame
 import numpy as np
-from colloids.colloids_create import ConfigurationGenerator
+from openmm import unit
+from .abstracts import ConfigurationGenerator
 
 
 class ClusterGenerator(ConfigurationGenerator):
@@ -13,28 +19,66 @@ class ClusterGenerator(ConfigurationGenerator):
     Generator for an initial configuration in a gsd.hoomd.Frame instance for a colloid simulation based on several
     clusters of colloids.
 
-    Every cluster of colloids is assumed to have the same cell vectors. To generate the initial configuration,
-    the clusters are first centered. Then, the shared cell vectors of the clusters are repeated in all three directions.
-    Every replica of the cell is then filled with a randomly selected cluster from the list of clusters. The clusters
-    are selected based on their relative weights. Every cluster can optionally be randomly rotated.
+    Each cluster is defined in a lammps-data file together with cell vectors. Every cluster of colloids is assumed to
+    have the same cell vectors. To generate the initial configuration, the clusters are first centered. Then, the shared
+    cell vectors of the clusters are repeated in all three directions. Every replica of the cell is then filled with a
+    randomly selected cluster from the list of clusters. The clusters are selected based on their relative weights.
+    Every cluster can optionally be randomly rotated.
 
-    The clusters are specified by Atoms objects generated from a lammps-data file.
+    The clusters are specified as file paths to lammps-data files.
     See https://docs.lammps.org/2001/data_format.html for information about this file format.
+
+    All colloid positions in the centered clusters must lie in the unit cell defined by the lattice vectors.
 
     To space out the clusters, one can increase a cluster padding factor that scales the lattice vectors before
     replication. This will also scale the box size. Additionally, one can increase a padding factor that scales just the
     overall box size and thus increases the distance between the outwards facing colloids and the walls. To make the
     simulation box smaller, use a padding factor less than 1.
 
-    This dataclass assumes that the distances in the cluster are in units of nanometers.
+    Any bonds in the cluster definition in the lammps-data file are added as constraints, with the constraint distance
+    equal to the current bond length in the cluster definition. The bond lengths are not modified during the simulation.
 
-    Any bonds in the cluster are added as constraints, with the constraint distance equal to the current bond length in
-    the cluster definition. The bond lengths are not modified during the simulation.
+    This dataclass assumes that the style of units in the lammps-data file is "nano" (see
+    https://docs.lammps.org/units.html), that is, positions are in nanometers.
 
-    :param clusters:
-        A sequence of clusters of colloids with equal cell vectors that are used to generate the initial configuration.
-        All collooids in the centered clusters should lie in the unit cell defined by the lattice vectors.
-    :type clusters: Sequence[Atoms]
+    In the lammps-data file, only the lattice vectors, the positions of the colloids in the Atoms section, and the bonds
+    in the Bonds section are used. All other sections and information are ignored. In particular, the masses, radii, and
+    surface potentials of the different types of colloidal particles appearing in the lammps-data file should be
+    specified in the masses, radii, and surface_potentials dictionaries in the yaml file of this data class (and, for
+    instance, not in the Masses section of the lammps-data file).
+
+    See https://docs.lammps.org/Howto_triclinic.html for more information about the lattice vectors in the lammps-data
+    files.
+
+    In the Atoms section of the lammps-data files, the different columns from left to right are as follows:
+        Atom Index (should go from 1 to number of atoms).
+        Molecule-ID (ignored)
+        Atom type (these are the types appearing as keys in the mass/diameter/surface potential dictionaries in the yaml file)
+        Charge (ignored)
+        x position
+        y position
+        z position
+
+    In the Bonds section of the lammps-data files, the different columns from left to right are as follows:
+        Bond index (should go from 1 to number of bonds)
+        Bond ID (ignored)
+        Index of first atom involved in the bond.
+        Index of second atom involved in the bond.
+
+    :param masses:
+        The masses dictionary with the particle types as keys and the masses as values.
+    :type masses: dict[str, unit.Quantity]
+    :param radii:
+        The radii dictionary with the particle types as keys and the radii as values.
+    :type radii: dict[str, unit.Quantity]
+    :param surface_potentials:
+        The surface potentials dictionary with the particle types as keys and the surface potentials as values.
+    :type surface_potentials: dict[str, unit.Quantity]
+    :param cluster_specifications:
+        The filenames of the cluster definitions in lammps-data format.
+        All clusters must have the same cell vectors.
+        All (centered) clusters should lie in the unit cell defined by the cell vectors.
+    :type cluster_specifications: list[str]
     :param cluster_relative_weights:
         The relative weights of the clusters. The weights are used to randomly select a cluster from the list of
         clusters when generating the initial configuration.
@@ -62,21 +106,41 @@ class ClusterGenerator(ConfigurationGenerator):
     :type random_rotation: bool
 
     :raises ValueError:
+        If any cluster specification file does not end with ".lmp".
+        If no cluster specification file is provided.
+        If the length of the cluster specifications does not match the length of the cluster relative weights.
+        If any cluster relative weight is negative.
         If the cluster padding factor is not greater than zero.
         If the padding factor is not greater than zero.
         If no clusters are provided.
         If the number of clusters does not match the number of cluster probabilities.
         If any cluster probability is not greater than zero.
         If the clusters do not have the same cell vectors.
+        If the lattice repeats is not a positive integer or a list of three positive integers.
     """
 
-    def __init__(self, clusters: Sequence[Atoms], cluster_relative_weights: Sequence[float],
-                 lattice_repeats: Union[int, Sequence[int]], cluster_padding_factor: float,
-                 padding_factor: float, random_rotation: bool) -> None:
+    def __init__(self, masses: dict[str, unit.Quantity], radii: dict[str, unit.Quantity],
+                 surface_potentials: dict[str, unit.Quantity], cluster_specifications: list[str],
+                 cluster_relative_weights: Sequence[float], lattice_repeats: Union[int, Sequence[int]],
+                 cluster_padding_factor: float, padding_factor: float, random_rotation: bool) -> None:
         """Constructor of the ClusterGenerator class."""
-        super().__init__()
-        # The format of these arguments is already checked in configuration_parameters.py.
-        self._clusters = clusters
+        super().__init__(masses=masses, radii=radii, surface_potentials=surface_potentials)
+        if not all(cluster_specification.endswith(".lmp") for cluster_specification in cluster_specifications):
+            raise ValueError("The cluster specification file must be of the lammps-data file format.")
+        if not len(cluster_specifications) > 0:
+            raise ValueError("At least one cluster must be provided.")
+        if len(cluster_specifications) != len(cluster_relative_weights):
+            raise ValueError("The number of clusters must match the number of cluster probabilities.")
+        if not all(prob >= 0.0 for prob in cluster_relative_weights):
+            raise ValueError("All cluster probabilities must be non-negative.")
+        if any(prob == 0.0 for prob in cluster_relative_weights):
+            warnings.warn("Some cluster probabilities are zero. These clusters will not be used in the initial "
+                          "configuration.")
+        # We assume that the lammps-data file uses "nano" units where distances are measured in nanometers.
+        # However, ase would transform the distances in the lammps-data file to Angstroms by multiplying them
+        # by 10 if we specify units="nano". For units="metal", the ase distances are equal to the distances in
+        # the lammps-data file. We then just pretend that the distances are in nanometers.
+        self._clusters = [read_lammps_data(spec, units="metal") for spec in cluster_specifications]
         self._cluster_relative_weights = cluster_relative_weights
         self._lattice_repeats = lattice_repeats
         self._cluster_padding_factor = cluster_padding_factor
@@ -86,14 +150,44 @@ class ClusterGenerator(ConfigurationGenerator):
             raise ValueError("The cluster padding factor must be greater than zero.")
         if self._padding_factor <= 0.0:
             raise ValueError("The padding factor must be greater than zero.")
-        if not len(clusters) > 0:
+        if not len(self._clusters) > 0:
             raise ValueError("At least one cluster must be provided.")
-        if len(clusters) != len(cluster_relative_weights):
+        if len(self._clusters) != len(cluster_relative_weights):
             raise ValueError("The number of clusters must match the number of cluster probabilities.")
         if not all(prob >= 0.0 for prob in cluster_relative_weights):
             raise ValueError("All cluster probabilities must be non-negative.")
-        if not all(np.allclose(c.cell, clusters[0].cell) for c in clusters):
+        if not all(np.allclose(c.cell, self._clusters[0].cell) for c in self._clusters):
             raise ValueError("All clusters must have the same cell vectors.")
+        if isinstance(self._lattice_repeats, int):
+            if self._lattice_repeats <= 0:
+                raise ValueError("The number of lattice repeats must be positive.")
+        else:
+            if not (isinstance(self._lattice_repeats, list)
+                    and all(isinstance(repeat, int) for repeat in self._lattice_repeats)
+                    and len(self._lattice_repeats) == 3):
+                raise TypeError("The lattice repeats must be an integer or a list of three integers.")
+            if not all(repeat > 0 for repeat in self._lattice_repeats):
+                raise ValueError("All lattice repeats must be positive.")
+
+        self._found_types = set()
+        for atoms in self._clusters:
+            # If no cell is set in the lammps-data file, the lattice vectors are set to the identity matrix.
+            if np.equal(atoms.get_cell(), [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]).all():
+                warnings.warn(
+                    "The lattice vectors of the cluster are probably not set in the lammps-data file."
+                    "The identity matrix is used as lattice vectors.")
+            types = set(str(atom.number) for atom in atoms)
+            self._found_types.update(types)
+
+    def types(self) -> set[str]:
+        """
+        Return the set of particle types that will be generated by this configuration generator.
+
+        :return:
+            The set of particle types that will be generated by this configuration generator.
+        :rtype: set[str]
+        """
+        return self._found_types
 
     @staticmethod
     def _extract_bonded_indices(bond_string: str) -> list[int]:

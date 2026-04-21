@@ -1,1 +1,2 @@
-from .abstracts import ConfigurationGenerator, InitialModifier, FinalModifier
+from .configuration_generators import ConfigurationGenerator
+from .abstracts import InitialModifier, FinalModifier
