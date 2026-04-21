@@ -1,13 +1,7 @@
-from math import acos, pi
-from random import choices, uniform
 import re
 from typing import Sequence, Union
-<<<<<<< HEAD:colloids/colloids_create/cluster_generator.py
-from ase import Atoms, cell
-=======
 import warnings
 from ase.io.lammpsdata import read_lammps_data
->>>>>>> upstream/lattice_builder:colloids/colloids_create/configuration_generators/cluster_generator.py
 from gsd.hoomd import Frame
 import numpy as np
 from openmm import unit
@@ -42,7 +36,8 @@ class ClusterGenerator(ConfigurationGenerator):
     https://docs.lammps.org/units.html), that is, positions are in nanometers.
 
     In the lammps-data file, only the lattice vectors, the positions of the colloids in the Atoms section, and the bonds
-    in the Bonds section are used. All other sections and information are ignored. In particular, the masses, radii, and
+    in the Bonds section are used. All other sections and information are ignored. import warnings
+    In particular, the masses, radii, and
     surface potentials of the different types of colloidal particles appearing in the lammps-data file should be
     specified in the masses, radii, and surface_potentials dictionaries in the yaml file of this data class (and, for
     instance, not in the Masses section of the lammps-data file).
