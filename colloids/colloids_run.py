@@ -99,8 +99,8 @@ def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:
     if use_explicit_substrate and parameters.use_implicit_substrate:
         raise ValueError("Cannot use both explicit and implicit substrate.")
     if use_explicit_substrate or parameters.use_implicit_substrate:
-        if not all(parameters.wall_directions):
-            raise ValueError("A substrate can only be used if all walls are active.")
+        if not parameters.wall_directions[-1]:
+            raise ValueError("A substrate can only be used if z walls are active.")
 
 
 def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.Simulation:
@@ -193,7 +193,6 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         depletion_potential = None
 
     if parameters.use_gravity:
-        assert all_walls
         gravitational_potential = Gravity(parameters.gravitational_acceleration, parameters.water_density,
                                           parameters.particle_density)
     else:
@@ -260,14 +259,11 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             system.addForce(force)
 
     if parameters.use_gravity:
-        assert all_walls
         for force in gravitational_potential.yield_potentials():
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
-        assert not system.usesPeriodicBoundaryConditions()
 
     if parameters.use_implicit_substrate:
-        assert all_walls
         for force in substrate_wall.yield_potentials():
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
