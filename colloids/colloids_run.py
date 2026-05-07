@@ -136,6 +136,9 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             assert (not parameters.use_depletion
                     or parameters.depletant_radius
                     > (parameters.cutoff_factor * parameters.debye_length - 2.0 * parameters.brush_length) / 2.0)
+        else:
+            if parameters.use_pbc:
+                warnings.warn("All walls are included, so particles will not be able to leave the box. Consider disabling periodic boundary conditions to improve performance.")
         for index, wall_direction in enumerate(parameters.wall_directions):
             if wall_direction:
                 # The shifted Lennard Jones walls diverge at distance r = radius - 1 from the location of the wall,
@@ -152,7 +155,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         wall_distances = None
         final_cell = cell
 
-    if not all_walls and parameters.use_pbc:
+    if parameters.use_pbc:
         topology.setPeriodicBoxVectors(final_cell)
         system.setDefaultPeriodicBoxVectors(openmm.Vec3(*final_cell[0]), openmm.Vec3(*final_cell[1]),
                                             openmm.Vec3(*final_cell[2]))
@@ -174,7 +177,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
     # ---------------------------------------- Create all forces. ------------------------------------------------------
     colloid_potentials = ColloidPotentialsAlgebraic(
         colloid_potentials_parameters=potentials_parameters, use_log=parameters.use_log,
-        cutoff_factor=parameters.cutoff_factor, periodic_boundary_conditions=not all_walls,
+        cutoff_factor=parameters.cutoff_factor, periodic_boundary_conditions=parameters.use_pbc,
         steric_radius_average=parameters.steric_radius_average,
         electrostatic_radius_average=parameters.electrostatic_radius_average)
 
@@ -188,7 +191,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         depletion_potential = DepletionPotential(parameters.depletion_phi, parameters.depletant_radius,
                                                  brush_length=parameters.brush_length,
                                                  temperature=parameters.potential_temperature,
-                                                 periodic_boundary_conditions=not all_walls)
+                                                 periodic_boundary_conditions=parameters.use_pbc)
     else:
         depletion_potential = None
 
