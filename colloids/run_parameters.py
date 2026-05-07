@@ -205,6 +205,12 @@ class RunParameters(Parameters):
         An implicit substrate can only be used if no explicit substrate particles have been added to the simulation box.
         Defaults to False.
     :type use_implicit_substrate: bool
+    :param use_hard_wall:
+        A boolean indicating whether to turn on hard walls that particles cannot penetrate.
+        Hard walls are placed at ±wall_distance/2 for each active wall direction and act on colloid particles
+        to prevent any part of their volume from crossing the wall boundary.
+        Defaults to False.
+    :type use_hard_wall: bool
     :param substrate_wall_charge:
         The charge of the substrate wall at the bottom of the simulation box. If using an implicit substrate, substrate
         wall charge must not be None and the units must be compatible with millivolts.
@@ -313,6 +319,7 @@ class RunParameters(Parameters):
     wall_directions: list[bool] = field(default_factory=lambda: [False, False, False])
     use_pbc: bool = True
     use_implicit_substrate: bool = False
+    use_hard_wall: bool = False
     substrate_wall_charge: Optional[unit.Quantity] = None
     use_depletion: bool = False
     depletion_phi: Optional[float] = None
@@ -473,6 +480,9 @@ class RunParameters(Parameters):
         else:
             if self.update_reporter_parameters is not None:
                 raise ValueError("Update-reporter parameters must not be specified if the update reporter is not on.")
+        if self.use_hard_wall:
+            if not any(self.wall_directions):
+                raise ValueError("At least one wall direction must be active if hard walls are used.")
         if self.use_plumed:
             if self.plumed_script is None:
                 raise ValueError("PLUMED input file must be specified if using PLUMED.")

@@ -433,3 +433,191 @@ class ImplicitSubstrateWall(OpenMMPotentialAbstract):
         super().yield_potentials()
         self._substrate_wall_potential.setName(self._name)
         yield self._substrate_wall_potential
+
+
+class HardWall(OpenMMPotentialAbstract):
+    """
+    This class sets up hard walls that particles cannot penetrate using the CustomExternalForce class of openmm.
+
+    Hard walls are impenetrable barriers placed at ±wall_distance/2 for each specified direction. The wall prevents
+    any part of the particle volume (defined by the particle radius) from crossing the wall boundary.
+
+    The hard wall potential is implemented as a strongly repulsive potential that increases steeply as a particle
+    approaches the wall. The repulsive force acts on colloid particles when their surface would penetrate the wall
+    boundary.
+
+    This class allows to independently switch on walls in the x, y, and z directions.
+
+    The hard wall potential as a function of the distance to the wall is given by:
+    hw(d) = K * max(0, radius - (wall_distance/2 - distance_from_center))^2
+
+    where K is the wall force constant and d is the distance from the particle surface to the wall.
+
+    :param wall_distances:
+        A list of three distances specifying the dimensions of the simulation box in the x, y, and z directions.
+        This is used to determine the location of the hard walls at ±wall_distance/2 for every active wall direction.
+        For any inactive wall direction (see wall_directions parameter), the corresponding wall distance must be None.
+        For any active wall direction, the corresponding wall distance must be specified.
+        The unit of any wall distance must be compatible with nanometer and the value must be greater than zero.
+    :type wall_distances: Sequence[Optional[unit.Quantity]]
+    :param wall_directions:
+        A list of three booleans indicating whether the walls in the x, y, and z directions are active.
+        Defaults to [True, True, True].
+    :type wall_directions: list[bool]
+    :param wall_force_constant:
+        The spring constant for the repulsive potential. Higher values result in a steeper repulsion.
+        The unit must be compatible with kilojoules_per_mole per nanometer squared.
+        Defaults to 1000 kJ/(mol·nm²).
+    :type wall_force_constant: unit.Quantity
+    :param use_pbc:
+        A boolean indicating whether periodic boundary conditions are used.
+        Defaults to True.
+    :type use_pbc: bool
+
+    :raises TypeError:
+        If any wall distance for an active wall direction is not a Quantity with a proper unit.
+        If wall_force_constant is not a Quantity with a proper unit.
+
+    :raises ValueError:
+        If any wall distance for an active wall direction is not greater than zero.
+        If wall_force_constant is not greater than zero.
+        If no wall direction is active.
+        If not exactly three wall directions are specified.
+        If not exactly three wall distances are specified.
+        If a wall distance is specified for an inactive wall direction.
+        If a wall distance is not specified for an active wall direction.
+    """
+
+    _name = "hard_wall_energy"
+
+    def __init__(self, wall_distances: Sequence[Optional[unit.Quantity]], 
+                 wall_directions: Sequence[bool] = (True, True, True),
+                 wall_force_constant: unit.Quantity = 1000.0 * unit.kilojoule_per_mole / unit.nanometer ** 2,
+                 use_pbc: bool = True) -> None:
+        """Constructor of the HardWall class."""
+        super().__init__()
+
+        if not any(wall_directions):
+            raise ValueError("at least one wall direction must be active")
+        if len(wall_directions) != 3:
+            raise ValueError("wall directions must be specified for three dimensions")
+        if len(wall_distances) != 3:
+            raise ValueError("wall distances must be specified for three dimensions")
+        for wdir, wdist in zip(wall_directions, wall_distances):
+            if wdir:
+                if wdist is None:
+                    raise ValueError("wall distance must be specified for any active wall direction")
+                if not wdist.unit.is_compatible(length_unit):
+                    raise TypeError("any wall distance must have a unit that is compatible with nanometers")
+                if not wdist.value_in_unit(length_unit) > 0.0:
+                    raise ValueError("any wall distance must have a value greater than zero")
+            else:
+                if wdist is not None:
+                    raise ValueError("wall distance must not be specified for inactive wall direction")
+
+        # Validate wall_force_constant
+        force_constant_unit = energy_unit / (length_unit ** 2)
+        if not wall_force_constant.unit.is_compatible(force_constant_unit):
+            raise TypeError("argument wall_force_constant must have a unit that is compatible with kilojoules_per_mole per nanometer squared")
+        if not wall_force_constant.value_in_unit(force_constant_unit) > 0.0:
+            raise ValueError("argument wall_force_constant must have a value greater than zero")
+
+        self._wall_distances = wall_distances
+        self._wall_directions = wall_directions
+        self._wall_force_constant = wall_force_constant
+        self._use_pbc = use_pbc
+        self._hard_wall_potential = self._set_up_hard_wall_potential()
+
+    def _set_up_hard_wall_potential(self) -> CustomExternalForce:
+        """Set up the basic functional form of the hard wall potential."""
+
+        # Hard wall potential in x direction: repulsive when particle surface approaches wall
+        hw_x = ("step(radius - (wall_distance_x_over_two - periodicdistance(x, 0, 0, 0, 0, 0))) * "
+                "wall_force_constant * (radius - (wall_distance_x_over_two - periodicdistance(x, 0, 0, 0, 0, 0)))^2")
+        hw_y = ("step(radius - (wall_distance_y_over_two - periodicdistance(0, y, 0, 0, 0, 0))) * "
+                "wall_force_constant * (radius - (wall_distance_y_over_two - periodicdistance(0, y, 0, 0, 0, 0)))^2")
+        hw_z = ("step(radius - (wall_distance_z_over_two - periodicdistance(0, 0, z, 0, 0, 0))) * "
+                "wall_force_constant * (radius - (wall_distance_z_over_two - periodicdistance(0, 0, z, 0, 0, 0)))^2")
+
+        if not self._use_pbc:
+            hw_x = hw_x.replace("periodicdistance(x, 0, 0, 0, 0, 0)", "abs(x)")
+            hw_y = hw_y.replace("periodicdistance(0, y, 0, 0, 0, 0)", "abs(y)")
+            hw_z = hw_z.replace("periodicdistance(0, 0, z, 0, 0, 0)", "abs(z)")
+
+        hw_string = "+".join(hw for hw, wdir in zip([hw_x, hw_y, hw_z], self._wall_directions) if wdir)
+        assert hw_string
+
+        hard_wall_potential = CustomExternalForce(hw_string)
+        hard_wall_potential.addGlobalParameter("wall_force_constant",
+                                               self._wall_force_constant.value_in_unit(energy_unit / (length_unit ** 2)))
+        hard_wall_potential.addPerParticleParameter("radius")
+
+        if self._wall_directions[0]:
+            hard_wall_potential.addPerParticleParameter("wall_distance_x_over_two")
+        if self._wall_directions[1]:
+            hard_wall_potential.addPerParticleParameter("wall_distance_y_over_two")
+        if self._wall_directions[2]:
+            hard_wall_potential.addPerParticleParameter("wall_distance_z_over_two")
+
+        return hard_wall_potential
+
+    def add_particle(self, index: int, radius: unit.Quantity) -> None:
+        """
+        Add a colloid with a given radius to the system.
+
+        This method has to be called for every particle in the system before the method yield_potentials is used.
+
+        :param index:
+            The index of the particle in the OpenMM system.
+        :type index: int
+        :param radius:
+            The radius of the colloid.
+            The unit of the radius must be compatible with nanometers and the value must be greater than zero.
+        :type radius: unit.Quantity
+
+        :raises TypeError:
+            If the radius is not a Quantity with a proper unit (via the abstract base class).
+        :raises ValueError:
+            If the radius is not greater than zero (via the abstract base class).
+        :raises RuntimeError:
+            If this method is called after the yield_potentials method (via the abstract base class).
+        """
+        super().add_particle()
+        if not radius.unit.is_compatible(length_unit):
+            raise TypeError("argument radius must have a unit that is compatible with nanometers")
+        if not radius.value_in_unit(length_unit) > 0.0:
+            raise ValueError("argument radius must have a value greater than zero")
+
+        per_particle_parameters = [radius.value_in_unit(length_unit)]
+
+        if self._wall_directions[0]:
+            per_particle_parameters.append(
+                (self._wall_distances[0] / 2.0).value_in_unit(length_unit)
+            )
+        if self._wall_directions[1]:
+            per_particle_parameters.append(
+                (self._wall_distances[1] / 2.0).value_in_unit(length_unit)
+            )
+        if self._wall_directions[2]:
+            per_particle_parameters.append(
+                (self._wall_distances[2] / 2.0).value_in_unit(length_unit)
+            )
+
+        self._hard_wall_potential.addParticle(index, per_particle_parameters)
+
+    def yield_potentials(self) -> Iterator[CustomExternalForce]:
+        """
+        Generate all potentials that are necessary to properly include the hard walls in the OpenMM system.
+
+        This method has to be called after the method add_particle was called for every particle in the system.
+
+        :return:
+            A generator that yields hard walls handled by this class.
+        :rtype: Iterator[CustomExternalForce]
+
+        :raises RuntimeError:
+            If the method add_particle was not called before this method (via the abstract base class).
+        """
+        super().yield_potentials()
+        self._hard_wall_potential.setName(self._name)
+        yield self._hard_wall_potential

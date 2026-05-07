@@ -8,7 +8,7 @@ import numpy as np
 import openmm
 from openmm import app
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
-                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential)
+                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential, HardWall)
 from colloids.gsd_reporter import GSDReporter
 from colloids.helper_functions import get_cell_from_box, read_gsd_file, write_gsd_file
 import colloids.integrators as integrators
@@ -187,6 +187,11 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
     else:
         slj_walls = None
 
+    if parameters.use_hard_wall:
+        hard_wall = HardWall(wall_distances, parameters.wall_directions, use_pbc=parameters.use_pbc)
+    else:
+        hard_wall = None
+
     if parameters.use_depletion:
         depletion_potential = DepletionPotential(parameters.depletion_phi, parameters.depletant_radius,
                                                  brush_length=parameters.brush_length,
@@ -231,6 +236,8 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
                                         substrate_flag=is_substrate)
         if include_walls and not is_substrate:
             slj_walls.add_particle(index=i, radius=radii[i])
+        if parameters.use_hard_wall and not is_substrate:
+            hard_wall.add_particle(index=i, radius=radii[i])
         if parameters.use_depletion:
             depletion_potential.add_particle(radius=radii[i], substrate_flag=is_substrate)
         if parameters.use_gravity and not is_substrate:
@@ -253,6 +260,11 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
 
     if include_walls:
         for force in slj_walls.yield_potentials():
+            force.setForceGroup(system.getNumForces())
+            system.addForce(force)
+
+    if parameters.use_hard_wall:
+        for force in hard_wall.yield_potentials():
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
