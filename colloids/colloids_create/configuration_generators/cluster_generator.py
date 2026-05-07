@@ -321,7 +321,8 @@ class ClusterGenerator(ConfigurationGenerator):
             # Test to see if any positions in the clusters are outside the unit cell. If so, random rotations cannot be applied as 
             # they could cause some colloids to be outside the box. In this case, an error is raised and the user should increase 
             # the cluster padding factor to allow for rotations.
-            outside_unit_cell = np.any((np.linalg.norm(zero_min_positions, axis=-1)[:, np.newaxis] - 0.5 * np.linalg.norm(individual_cell, axis=-1))[np.newaxis, :] > 0)
+            all_particle_displacments_from_origin = np.concatenate(zero_min_positions, axis=0) # Shape: (total_n_particles_in_all_clusters, 3)
+            outside_unit_cell = np.any((np.linalg.norm(all_particle_displacments_from_origin, axis=-1)[:, np.newaxis] - 0.5 * np.linalg.norm(individual_cell, axis=-1))[np.newaxis, :] > 0)
             if outside_unit_cell:
                 raise ValueError("Some positions in the centered and padded clusters are outside of the unit cell. "
                                  "Random rotations cannot be applied as they could cause some colloids to be outside the box. "
