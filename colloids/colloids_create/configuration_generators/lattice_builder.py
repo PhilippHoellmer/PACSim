@@ -286,7 +286,7 @@ class LatticeBuilder(ConfigurationGenerator):
             for j in range(i + 1, len(effective_radii)):
                 required_scale_factor = max(required_scale_factor,
                                             (effective_radii[i] + effective_radii[j]) / dists[i, j])
-        assert all(dists[i, j] * required_scale_factor >= effective_radii[i] + effective_radii[j]
+        assert all(dists[i, j] * required_scale_factor >= effective_radii[i] + effective_radii[j] - 1.0e-12
                    for i in range(len(effective_radii)) for j in range(i + 1, len(effective_radii)))
 
         # Apply scale factor to the full supercell.
