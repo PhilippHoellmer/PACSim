@@ -1,0 +1,38 @@
+configuration_generator: LatticeBuilder
+configuration_generator_parameters:
+  lattice_specification: "Th3P4.cif"
+  lattice_repeats: 3
+  run_parameters_file: "run_lattice_builder_test.yaml"
+  radii_padding: !Quantity
+    unit: nanometer
+    value: 5.0
+  lattice_padding: !Quantity
+    unit: nanometer
+    value: 1926.155
+  optimize_energy: true
+  energy_scale_samples: 50
+masses:
+  "Th": !Quantity
+    unit: dalton
+    value: 1.0
+  "P": !Quantity
+    unit: dalton
+    value: 0.614125
+radii:
+  "Th": !Quantity
+    unit: nanometer
+    value: 120.0
+  "P": !Quantity
+    unit: nanometer
+    value: 102.0
+surface_potentials:
+  "Th": !Quantity
+    unit: millivolt
+    value: -35.0
+  "P": !Quantity
+    unit: millivolt
+    value: 35.0
+initial_modifiers: null
+initial_modifiers_parameters: null
+final_modifiers: null
+final_modifiers_parameters: null
