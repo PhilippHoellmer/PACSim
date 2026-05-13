@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 
-class TestClusterGenerator(object):
+class TestLatticeBuilder(object):
     @pytest.fixture(autouse=True)
     def change_test_dir(self, request, monkeypatch):
         # Change the working directory to the directory of the test file.
