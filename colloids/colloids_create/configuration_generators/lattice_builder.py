@@ -239,7 +239,7 @@ class LatticeBuilder(ConfigurationGenerator):
             system.addForce(force)
 
         assert not system.usesPeriodicBoundaryConditions()
-        platform = openmm.Platform.getPlatformByName(run_parameters.platform_name)
+        platform = openmm.Platform.getPlatformByName("Reference")
         dummy_integrator = openmm.VerletIntegrator(0.001)
         context = openmm.Context(system, dummy_integrator, platform)
 
