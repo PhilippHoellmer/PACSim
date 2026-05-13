@@ -235,6 +235,7 @@ class LatticeBuilder(ConfigurationGenerator):
             colloid_potentials.add_particle(radius=radii[t], surface_potential=surface_potentials[t])
 
         for force in colloid_potentials.yield_potentials():
+            force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
         assert not system.usesPeriodicBoundaryConditions()
