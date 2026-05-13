@@ -1,3 +1,4 @@
+import warnings
 from typing import Optional
 import freud
 import numpy as np
@@ -6,6 +7,80 @@ from gsd.hoomd import Frame
 from openmm import unit
 from colloids.colloids_create import FinalModifier
 from colloids.units import length_unit
+
+
+class RadiusNoiseModifier(FinalModifier):
+    """
+    Modifier of an existing configuration in a Frame instance that adds independent Gaussian noise to the radius of
+    every particle in the configuration.
+
+    For each particle, a noise sample is drawn from a normal distribution with zero mean and a type-dependent standard
+    deviation, and added to the particle's radius. The frame's diameter array is updated accordingly.
+
+    The standard deviations are specified per particle type in the initialization. The frame must only contain particle
+    types that are present in the standard deviations dictionary. A warning is issued for any type in the standard
+    deviations dictionary that does not appear in the frame.
+
+    :param standard_deviations:
+        The standard deviations of the Gaussian noise to add to the radius of every particle, keyed by particle type.
+        The unit of every standard deviation must be compatible with nanometers and the values must be non-negative.
+    :type standard_deviations: dict[str, unit.Quantity]
+
+    :raises TypeError:
+        If a key in standard_deviations is not a string.
+        If a value in standard_deviations does not have a unit compatible with nanometers.
+    :raises ValueError:
+        If a value in standard_deviations is negative.
+    """
+
+    def __init__(self, standard_deviations: dict[str, unit.Quantity]) -> None:
+        """Constructor of the RadiusNoiseModifier class."""
+        super().__init__()
+        for t, std in standard_deviations.items():
+            if not isinstance(t, str):
+                raise TypeError("The keys of the standard_deviations dictionary must be strings.")
+            if not std.unit.is_compatible(length_unit):
+                raise TypeError(f"The standard deviation of type {t} must have a unit compatible with nanometers.")
+            if std < 0.0 * length_unit:
+                raise ValueError(f"The standard deviation of type {t} must be non-negative.")
+        self._standard_deviations = {t: std.value_in_unit(length_unit) for t, std in standard_deviations.items()}
+
+    def modify_configuration(self, frame: Frame) -> None:
+        """
+        Modify the given configuration in-place by adding Gaussian noise to the radius of every particle.
+
+        For each particle in the frame, a noise sample is drawn from a normal distribution with zero mean and the
+        standard deviation specified for the particle's type, and added to the particle's radius. The frame's diameter
+        array is updated accordingly.
+
+        This method modifies the following attributes of the given frame:
+        - frame.particles.diameter
+
+        :param frame:
+            The frame to modify. Must have the diameter attribute set.
+        :type frame: gsd.hoomd.Frame
+
+        :raises ValueError:
+            If the frame does not have the diameter attribute set.
+            If a particle type in the frame is not in the standard_deviations dictionary.
+            If a noised radius is non-positive.
+        """
+        if frame.particles.diameter is None:
+            raise ValueError("The RadiusNoiseModifier class requires already populated diameter.")
+        for t in frame.particles.types:
+            if t not in self._standard_deviations:
+                raise ValueError(f"Type {t} of the frame is not in the standard_deviations dictionary.")
+        for t in self._standard_deviations:
+            if t not in frame.particles.types:
+                warnings.warn(f"Type {t} of the standard_deviations dictionary is not in the frame.")
+
+        stds_per_particle = np.array(
+            [self._standard_deviations[frame.particles.types[i]] for i in frame.particles.typeid], dtype=np.float32)
+        radii = frame.particles.diameter / 2.0
+        noised_radii = radii + np.random.normal(loc=0.0, scale=stds_per_particle).astype(np.float32)
+        if np.any(noised_radii <= 0.0):
+            raise ValueError("The Gaussian noise produced a non-positive radius.")
+        frame.particles.diameter = (2.0 * noised_radii).astype(np.float32)
 
 
 class SeedModifier(FinalModifier):
