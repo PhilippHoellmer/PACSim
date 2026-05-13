@@ -10,7 +10,7 @@ from scipy.spatial import distance_matrix
 from colloids.colloid_potentials_algebraic import ColloidPotentialsAlgebraic
 from colloids.colloid_potentials_parameters import ColloidPotentialsParameters
 from colloids.run_parameters import RunParameters
-from colloids.units import length_unit, mass_unit, electric_potential_unit, energy_unit
+from colloids.units import length_unit, mass_unit, energy_unit
 from .abstracts import ConfigurationGenerator
 
 
@@ -128,7 +128,7 @@ class LatticeBuilder(ConfigurationGenerator):
                 raise ValueError("energy_scale_range must not be set when optimize_energy is False.")
             if energy_scale_samples is not None:
                 raise ValueError("energy_scale_samples must not be set when optimize_energy is False.")
-        self._energy_scale_range = energy_scale_range if energy_scale_range is not None else (0.5, 1.5)
+        self._energy_scale_range = tuple(energy_scale_range) if energy_scale_range is not None else (0.5, 1.5)
         self._energy_scale_samples = energy_scale_samples if energy_scale_samples is not None else 50
         # Label atoms as their element symbols based on atomic number, e.g. 'Fe', 'O', etc.
         self._type_map = {atomic_number: str(Element.from_Z(atomic_number))
@@ -141,13 +141,13 @@ class LatticeBuilder(ConfigurationGenerator):
                 raise ValueError("The lattice repeats must be either a single integer or a sequence of three integers.")
             if not all(r > 0 for r in self._lattice_repeats):
                 raise ValueError("All values in the lattice repeats must be greater than zero.")
-        if not self._radii_padding.unit.is_compatible(unit.nanometer):
+        if not self._radii_padding.unit.is_compatible(length_unit):
             raise TypeError("The radii padding must have a unit that is compatible with nanometers.")
-        if not self._radii_padding.value_in_unit(unit.nanometer) >= 0.0:
+        if not self._radii_padding.value_in_unit(length_unit) >= 0.0:
             raise ValueError("The radii padding must have a value greater than or equal to zero.")
-        if not self._lattice_padding.unit.is_compatible(unit.nanometer):
+        if not self._lattice_padding.unit.is_compatible(length_unit):
             raise TypeError("The lattice padding must have a unit that is compatible with nanometers.")
-        if not self._lattice_padding.value_in_unit(unit.nanometer) >= 0.0:
+        if not self._lattice_padding.value_in_unit(length_unit) >= 0.0:
             raise ValueError("The lattice padding must have a value greater than or equal to zero.")
         if len(self._energy_scale_range) != 2:
             raise ValueError("The energy scale range must be a sequence of exactly two floats.")
@@ -277,9 +277,9 @@ class LatticeBuilder(ConfigurationGenerator):
         # Find optimal scale factor using a small test supercell to speed up the search.
         small_supercell = self._structure.make_supercell((3, 3, 3), in_place=False, to_unit_cell=True)
         dists = distance_matrix(small_supercell.cart_coords, small_supercell.cart_coords)
-        effective_radii = [self._radii[self._type_map[atomic_number]].value_in_unit(unit.nanometer)
-                           + self._brush_length.value_in_unit(unit.nanometer)
-                           + self._radii_padding.value_in_unit(unit.nanometer)
+        effective_radii = [self._radii[self._type_map[atomic_number]].value_in_unit(length_unit)
+                           + self._brush_length.value_in_unit(length_unit)
+                           + self._radii_padding.value_in_unit(length_unit)
                            for atomic_number in small_supercell.atomic_numbers]
         required_scale_factor = 0.0
         for i in range(len(effective_radii)):
@@ -295,6 +295,7 @@ class LatticeBuilder(ConfigurationGenerator):
 
         # Optionally optimize the scale factor by energy minimization.
         if self._optimize_energy:
+            # noinspection PyTypeChecker
             required_scale_factor = self._optimize_scale_factor(
                 base_cart_coords=structure_full.cart_coords, types=types, radii=self._radii,
                 surface_potentials=self._surface_potentials, masses=self._masses,
@@ -305,14 +306,14 @@ class LatticeBuilder(ConfigurationGenerator):
 
         # Center at origin.
         positions -= positions.mean(axis=0)
-        effective_radii = [self._radii[t].value_in_unit(unit.nanometer)
-                           + self._brush_length.value_in_unit(unit.nanometer)
-                           + self._radii_padding.value_in_unit(unit.nanometer)
+        effective_radii = [self._radii[t].value_in_unit(length_unit)
+                           + self._brush_length.value_in_unit(length_unit)
+                           + self._radii_padding.value_in_unit(length_unit)
                            for t in types]
 
         # Embed in cubic box with padding.
-        box_length = 2.0 * (np.max(np.abs(positions)) + np.max(effective_radii)
-                            + self._lattice_padding.value_in_unit(unit.nanometer))
+        box_length = 2.0 * (float(np.max(np.abs(positions))) + float(np.max(effective_radii))
+                            + self._lattice_padding.value_in_unit(length_unit))
 
         # --- Build the Frame ---
         frame = Frame()
