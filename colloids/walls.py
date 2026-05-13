@@ -19,7 +19,7 @@ class ShiftedLennardJonesWalls(OpenMMPotentialAbstract):
     +-wall_distance / 2 for every specified direction with its specified wall_distance.
 
     The shifted Lennard-Jones potential acts on colloid particles within a certain cutoff distance of every wall. This
-    cutoff distance depends on the particle radius and is given by r_cut - delta, where r_cut = radius * 2^(1/6) and
+    cutoff distance depends on the particle radius and is given by r_cut + delta, where r_cut = radius * 2^(1/6) and
     delta = radius - 1. Outside of this range, the external force acting on a particle is 0.
 
     The Lennard-Jones potential is shifted so that it starts smoothly at zero at the cutoff distance.
