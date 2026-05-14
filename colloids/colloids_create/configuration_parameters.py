@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Optional
 import inspect
+import warnings
 from openmm import unit
 from colloids.abstracts import Parameters
 from colloids.units import electric_potential_unit, length_unit, mass_unit
@@ -45,8 +46,8 @@ class ConfigurationParameters(Parameters):
     :param masses:
         The masses of the different types of colloidal particles that appear in the configuration.
         The keys of the dictionary are the types of the colloidal particles and the values are the masses.
-        The unit of the masses must be compatible with atomic mass units and the values must be greater than zero,
-        except for immobile particles (as the substrate), which should have a mass of zero.
+        The unit of the masses must be compatible with atomic mass units. Immobile particles (as the substrate) should
+        have a mass of zero. Negative masses are allowed but trigger a warning.
         Defaults to {"1": 1.0 * amu, "2": (95.0 / 105.0) ** 3 * amu}.
     :type masses: dict[str, unit.Quantity]
     :param radii:
@@ -95,7 +96,6 @@ class ConfigurationParameters(Parameters):
         If the masses, radii, or surface potentials dictionaries do not have strings as keys.
     :raises ValueError:
         If the configuration generator is not found in the available generators.
-        If the masses are not greater than or equal to zero.
         If the radii are not greater than zero.
         If an initial or final modifier is not found in the available modifiers.
         If initial_modifiers is specified but initial_modifiers_parameters is not, or vice versa.
@@ -138,7 +138,7 @@ class ConfigurationParameters(Parameters):
             if not self.masses[t].unit.is_compatible(mass_unit):
                 raise TypeError(f"Mass of type {t} must have a unit compatible with atomic mass units.")
             if self.masses[t] < 0.0 * mass_unit:
-                raise ValueError(f"Mass of type {t} must be greater than zero.")
+                warnings.warn(f"Mass of type {t} is negative, make sure to include the MassModifier if desired.")
             if t not in self.radii:
                 raise ValueError(f"Type {t} of the masses dictionary is not in radii dictionary.")
             if t not in self.surface_potentials:

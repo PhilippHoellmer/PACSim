@@ -83,6 +83,65 @@ class RadiusNoiseModifier(FinalModifier):
         frame.particles.diameter = (2.0 * noised_radii).astype(np.float32)
 
 
+class CubicMassModifier(FinalModifier):
+    """
+    Modifier of an existing configuration in a Frame instance that recomputes the mass of every particle so that the
+    mass scales with the cube of its radius.
+
+    For every particle, the new mass is given by ``(radius / reference_radius) ** 3`` (in atomic mass units), so that a
+    particle with radius equal to ``reference_radius`` has a mass of one. Particles whose current mass is exactly zero
+    (for example, substrate particles) are left untouched.
+
+    :param reference_radius:
+        The reference radius for which the assigned mass should equal one atomic mass unit.
+        Must have a unit compatible with nanometers and must be greater than zero.
+    :type reference_radius: unit.Quantity
+
+    :raises TypeError:
+        If reference_radius does not have a unit compatible with nanometers.
+    :raises ValueError:
+        If reference_radius is not greater than zero.
+    """
+
+    def __init__(self, reference_radius: unit.Quantity) -> None:
+        """Constructor of the CubicMassModifier class."""
+        super().__init__()
+        if not reference_radius.unit.is_compatible(length_unit):
+            raise TypeError("The reference_radius must have a unit compatible with nanometers.")
+        if reference_radius <= 0.0 * length_unit:
+            raise ValueError("The reference_radius must be greater than zero.")
+        self._reference_radius = reference_radius.value_in_unit(length_unit)
+
+    def modify_configuration(self, frame: Frame) -> None:
+        """
+        Modify the given configuration in-place by recomputing the mass of every particle from its radius.
+
+        For every particle, the new mass is given by ``(radius / reference_radius) ** 3`` (in atomic mass units).
+        Particles whose current mass is exactly zero are not modified.
+
+        This method modifies the following attributes of the given frame:
+        - frame.particles.mass
+
+        :param frame:
+            The frame to modify. Must have the diameter and mass attributes set.
+        :type frame: gsd.hoomd.Frame
+
+        :raises ValueError:
+            If the frame does not have the diameter or mass attribute set.
+        """
+        if frame.particles.diameter is None:
+            raise ValueError("The CubicMassModifier class requires already populated diameter.")
+        if frame.particles.mass is None:
+            raise ValueError("The CubicMassModifier class requires already populated masses.")
+
+        radii = frame.particles.diameter / 2.0
+        new_masses = (radii / self._reference_radius) ** 3
+        # Preserve zero masses (e.g., immobile substrate particles).
+        zero_mask = (frame.particles.mass == 0.0)
+        new_masses[zero_mask] = 0.0
+        frame.particles.mass = new_masses.astype(np.float32)
+
+
 class SeedModifier(FinalModifier):
     """
     Modifier of an existing configuration in a Frame instance that seeds the configuration with particles from another
