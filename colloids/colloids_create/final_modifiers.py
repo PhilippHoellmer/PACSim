@@ -83,7 +83,7 @@ class RadiusNoiseModifier(FinalModifier):
         frame.particles.diameter = (2.0 * noised_radii).astype(np.float32)
 
 
-class CubicMassModifier(FinalModifier):
+class MassModifier(FinalModifier):
     """
     Modifier of an existing configuration in a Frame instance that recomputes the mass of every particle so that the
     mass scales with the cube of its radius.
