@@ -1,8 +1,10 @@
-cluster_specifications: 
-  - __CLUSTER_NAME__
-lattice_repeats: __N_REPEATS__
-cluster_padding_factor: 1.2
-padding_factor: 1.2
+configuration_generator_parameters:
+  cluster_specifications: 
+    - __CLUSTER_NAME__
+  lattice_repeats: __N_REPEATS__
+  cluster_padding_factor: 1.2
+  padding_factor: 1.2
+  random_rotation: false
 masses:
   "1": !Quantity
     unit: dalton
