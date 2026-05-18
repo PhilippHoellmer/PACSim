@@ -20,6 +20,7 @@ final_modifiers_parameters:
     seed_fractional_position: [0.75, 0.75, 0.75]
 configuration_generator_parameters:
   cluster_specifications: ["cluster.lmp"]
+  cluster_relative_weights: [1.0]
   lattice_repeats: 20
   cluster_padding_factor: 1.0
   padding_factor: 1.0

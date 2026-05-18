@@ -2,6 +2,7 @@ configuration_generator_parameters:
   cluster_specifications: 
     - __CLUSTER_NAME__
   lattice_repeats: __N_REPEATS__
+  cluster_relative_weights: [1.0]
   cluster_padding_factor: 1.2
   padding_factor: 1.2
   random_rotation: false
