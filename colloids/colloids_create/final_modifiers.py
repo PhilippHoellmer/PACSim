@@ -59,12 +59,17 @@ class SeedModifier(FinalModifier):
     """
 
     def __init__(self, seed_filename: str, seed_frame_index: int = -1,
+                 seed_fractional_position: Optional[list[float]] = [0.5, 0.5, 0.5],
                  overlap_distance: unit.Quantity = 0.0 * length_unit,
                  cluster_cutoff_distance: Optional[unit.Quantity] = None) -> None:
         """Constructor of the SeedModifier class."""
         super().__init__()
         if not seed_filename.endswith(".gsd"):
             raise ValueError("The seed filename must end with .gsd")
+        if len(seed_fractional_position) != 3:
+            raise ValueError("The seed fractional position must be a 3-dimensional vector.")
+        if not np.all(np.array([n >= 0.0 and n <= 1.0 for n in seed_fractional_position])):
+            raise ValueError("The seed fractional position must be between 0 and 1 in all dimensions.")
         if not overlap_distance.unit.is_compatible(length_unit):
             raise TypeError("The overlap distance must have a unit compatible with nanometers.")
         if overlap_distance < 0.0 * length_unit:
@@ -79,7 +84,7 @@ class SeedModifier(FinalModifier):
         self._seed_frame_index = seed_frame_index
         self._cluster_cutoff_distance = (cluster_cutoff_distance.value_in_unit(length_unit)
                                          if cluster_cutoff_distance is not None else None)
-
+        self._seed_fractional_position = seed_fractional_position
     @staticmethod
     def _validate_frame_compatibility(frame: Frame, seed_frame: Frame) -> None:
         """
@@ -229,6 +234,27 @@ class SeedModifier(FinalModifier):
         frame.bonds.types = ["b"]
         frame.bonds.typeid = np.zeros(frame.bonds.N, dtype=np.uint32)
         frame.bonds.group = frame.constraints.group.copy()
+
+    def _reposition_seed_frame(self, frame: Frame, seed_frame: Frame, seed_fractional_position: np.ndarray) -> None:
+        """
+        Modify the seed frame in-place to reposition its center of mass to the given position.
+
+        :param frame:
+            The base frame.
+        :type frame: Frame
+        :param seed_frame:
+            The seed frame to modify.
+        :type seed_frame: Frame
+        :param seed_fractional_position:
+            The new fractional position of the center of mass of the seed frame.
+        :type seed_fractional_position: np.ndarray
+        """
+        positions = seed_frame.particles.position
+        masses = seed_frame.particles.mass
+        center_of_mass = np.average(positions, axis=0, weights=masses)
+        seed_position = (np.array(seed_fractional_position) - 0.5) * frame.configuration.box[:3]
+        shift = seed_position - center_of_mass
+        seed_frame.particles.position += shift
 
     @staticmethod
     def _find_overlapping_particles(frame: Frame, seed_frame: Frame, overlap_distance: float) -> set[int]:
@@ -449,6 +475,9 @@ class SeedModifier(FinalModifier):
 
         if self._cluster_cutoff_distance is not None:
             self._filter_largest_cluster(seed_frame, self._cluster_cutoff_distance)
+
+        if self._seed_fractional_position is not None:
+            self._reposition_seed_frame(frame, seed_frame, self._seed_fractional_position)
 
         overlapping_indices = self._find_overlapping_particles(frame, seed_frame, self._overlap_distance)
         if len(overlapping_indices) > 0:

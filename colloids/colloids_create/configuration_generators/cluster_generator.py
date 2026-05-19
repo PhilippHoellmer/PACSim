@@ -254,6 +254,7 @@ class ClusterGenerator(ConfigurationGenerator):
 
         repeated_cluster = None
         bond_pairs = []
+        bond_values = []
         # All cells are assumed to be the same so we can use the first one.
         cell = centered_padded_clusters[0].get_cell()
         # Adapted from ase's repeat function.
@@ -285,9 +286,12 @@ class ClusterGenerator(ConfigurationGenerator):
                         repeated_cluster = new_cluster.copy()
                         if "bonds" in repeated_cluster.arrays:
                             # Extract the bonds and adjust the indices to account for the repetitions.
-                            bond_pairs += [(first_index, second_index)
-                                           for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
-                                           for second_index in self._extract_bonded_indices(bonds)]
+                            new_bond_pairs = [(first_index, second_index)
+                                              for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
+                                              for second_index in self._extract_bonded_indices(bonds)]
+                            bond_pairs += new_bond_pairs
+                            bond_values += [(new_cluster.get_distance(first_index, second_index))
+                                            for first_index, second_index in new_bond_pairs]
                     else:
                         # Concatenate the arrays of the new cluster to the repeated cluster.
                         for name, a in new_cluster.arrays.items():
@@ -296,9 +300,14 @@ class ClusterGenerator(ConfigurationGenerator):
                                                                                axis=0)
                             else:
                                 # For the bonds, we need to adjust the indices to account for the repetitions.
-                                bond_pairs += [(first_index + i0, second_index + i0)
-                                               for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
-                                               for second_index in self._extract_bonded_indices(bonds)]
+                                new_base_bond_pairs = [(first_index, second_index)
+                                                  for first_index, bonds in enumerate(new_cluster.arrays["bonds"])
+                                                  for second_index in self._extract_bonded_indices(bonds)]
+                                new_bond_pairs = [(first_index + i0, second_index + i0)
+                                                  for first_index, second_index in new_base_bond_pairs]
+                                bond_pairs += new_bond_pairs
+                                bond_values += [repeated_cluster.get_distance(first_index, second_index)
+                                                for first_index, second_index in new_base_bond_pairs]
                         # Set the positions of the repeated cluster to the unwrapped positions.
                         repeated_cluster.arrays["positions"][i0:i0 + len(new_cluster)] = unwrapped_positions
                     i0 += len(new_cluster)
@@ -309,7 +318,7 @@ class ClusterGenerator(ConfigurationGenerator):
 
         frame = Frame()
         frame.particles.N = len(repeated_cluster)
-        frame.particles.types = tuple(set(str(atom.number) for atom in repeated_cluster))
+        frame.particles.types = tuple(dict.fromkeys(str(atom.number) for atom in repeated_cluster)) 
         frame.particles.typeid = np.array([frame.particles.types.index(str(atom.number))
                                            for atom in repeated_cluster], dtype=np.uint32)
         frame.particles.position = repeated_cluster.positions.astype(np.float32)
@@ -322,10 +331,8 @@ class ClusterGenerator(ConfigurationGenerator):
              repeated_cluster.cell[2][1] / repeated_cluster.cell[2][2]], dtype=np.float32)
 
         if len(bond_pairs) > 0:
-            all_distances = repeated_cluster.get_all_distances()
             all_constraints = np.array(bond_pairs, dtype=np.uint32)
-            all_values = np.array([all_distances[first_index, second_index]
-                                   for first_index, second_index in bond_pairs], dtype=np.float32)
+            all_values = np.array(bond_values, dtype=np.float32)
             frame.constraints.N = len(bond_pairs)
             frame.constraints.group = all_constraints
             frame.constraints.value = all_values

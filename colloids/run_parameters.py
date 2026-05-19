@@ -6,6 +6,7 @@ from openmm import unit
 from colloids.abstracts import Parameters
 import colloids.integrators as integrators
 import colloids.update_reporters as update_reporters
+import colloids.collective_variables as collective_variables
 from colloids.units import energy_unit, length_unit, temperature_unit, time_unit, electric_potential_unit
 
 
@@ -266,6 +267,15 @@ class RunParameters(Parameters):
     :param plumed_script:
         A plumed input file to be used for interfacing with a simulation.
     :type plumed_script: Optional[str]
+    :param add_restraint:
+        A boolean indicating whether to add a harmonic restraint to run an umbrella sampling simulation.
+        Defaults to False.
+    :type add_restraint: bool
+    :param umbrella_sampling_parameters:
+        The parameters that are forwarded to the initialization method of the UmbrellaSamplingPotential, if 
+        enabled for a simulation.
+        Defaults to None.
+    :type umbrella_sampling_parameters: Optional[dict[str, dict[str, Any]]]
 
     :raises TypeError:
         If any of the quantities has an incompatible unit.
@@ -320,6 +330,8 @@ class RunParameters(Parameters):
     update_reporter_parameters: Optional[dict[str, Any]] = None
     use_plumed: bool = False
     plumed_script: Optional[str] = None
+    add_restraint: bool = False 
+    umbrella_sampling_parameters: Optional[dict[str, dict[str, Any]]] = None
 
     def __post_init__(self) -> None:
         """Check if the parameters are valid after initialization."""
@@ -475,7 +487,10 @@ class RunParameters(Parameters):
         else:
             if self.plumed_script is not None:
                 raise ValueError("PLUMED input file must not be specified if PLUMED is not being used.")
-
+        if self.add_restraint:
+            if self.umbrella_sampling_parameters is None:
+                raise ValueError("Umbrella sampling parameters must be specified if adding restraint.")
+      
 if __name__ == '__main__':
     RunParameters(initial_configuration="tests/first_frame.xyz").to_yaml("example.yaml")
     parameters = RunParameters.from_yaml("example.yaml")

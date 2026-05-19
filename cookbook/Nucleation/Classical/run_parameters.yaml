@@ -1,0 +1,51 @@
+integrator: LangevinIntegrator
+integrator_parameters:
+  randomNumberSeed: 1
+  frictionCoeff: !Quantity
+    unit: /picosecond
+    value: 0.001574074286750681
+  stepSize: !Quantity
+    unit: picosecond
+    value: 0.00317647015905543
+  temperature: !Quantity
+    unit: kelvin
+    value: 298.0
+potential_temperature: !Quantity
+  unit: kelvin
+  value: 298.0
+dielectric_constant: 80.0
+debye_length: !Quantity
+  unit: nanometer
+  value: 5.0483
+brush_density: !Quantity
+  unit: /(nanometer**2)
+  value: 0.09
+brush_length: !Quantity
+  unit: nanometer
+  value: 10.0
+cutoff_factor: 21.0
+wall_directions:
+- true
+- true
+- true
+epsilon: !Quantity
+  unit: kilojoule/mole
+  value: 2.477709860209665
+alpha: 1.0
+run_steps: 500000000
+checkpoint_interval: 1000000
+state_data_interval: 10000
+trajectory_interval: 1000000
+final_configuration_gsd_filename: final_frame.gsd
+initial_configuration: initial_configuration.gsd
+checkpoint_filename: checkpoint.chk
+state_data_filename: state_data.csv
+trajectory_filename: trajectory.gsd
+platform_name: CUDA
+minimize_energy_initially: false
+update_reporter: null
+update_reporter_parameters: null
+use_depletion: false
+use_gravity: false
+use_log: false
+velocity_seed: 1
