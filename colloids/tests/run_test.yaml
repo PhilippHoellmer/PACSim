@@ -4,27 +4,25 @@ brush_density: !Quantity
   value: 0.09
 brush_length: !Quantity
   unit: nanometer
-  value: 10.6
-checkpoint_filename: test_run_and_resume/checkpoint.chk
+  value: 10.0
+checkpoint_filename: checkpoint.chk
 checkpoint_interval: 500
 cutoff_factor: 21.0
 debye_length: !Quantity
   unit: nanometer
-  value: 5.726968
-depletant_radius: !Quantity
-    unit: nanometer
-    value: 5.0
-depletion_phi: 0.5
+  value: 5.3
+depletant_radius: null
+depletion_phi: null
 dielectric_constant: 80.0
 electrostatic_radius_average: harmonic
 epsilon: !Quantity
     unit: kilojoule/mole
     value: 2.477709860209665  # 1 k_B T
-final_configuration_gsd_filename: test_run_and_resume/final_frame.gsd
+final_configuration_gsd_filename: final_frame.gsd
 gravitational_acceleration: !Quantity
     unit: meter/(second**2)
     value: 9.8
-initial_configuration: full_first_frame.gsd
+initial_configuration: first_frame.gsd
 integrator: LangevinIntegrator
 integrator_parameters:
   frictionCoeff: !Quantity
@@ -46,32 +44,45 @@ potential_temperature: !Quantity
   unit: kelvin
   value: 298.0
 run_steps: 100
-state_data_filename: test_run_and_resume/state_data.csv
+state_data_filename: state_data.csv
 state_data_interval: 10
 steric_radius_average: harmonic
-trajectory_filename: test_run_and_resume/trajectory.gsd
+trajectory_filename: trajectory.gsd
 trajectory_interval: 10
-update_reporter: RampUpdateReporter
-update_reporter_parameters:
-  filename: test_run_and_resume/update_reporter.csv
-  update_interval: !Copy
-    key: state_data_interval
-  print_interval: !Copy
-    key: state_data_interval
-  final_update_step: !Copy
-    key: run_steps
-  parameter_name: debye_length
-  start_value: !Copy
-    key: debye_length
-  end_value: !Quantity
-    unit: nanometer
-    value: 6.0
-use_depletion: true
+update_reporter: null
+update_reporter_parameters: null
+use_depletion: false
 use_implicit_substrate: false
 substrate_wall_charge: null
 use_gravity: true
 use_log: false
 use_plumed: false
+add_restraint: true
+umbrella_sampling_parameters:
+  cv1:
+    cv_type: HighCoordCompositionCV
+    cv_parameters:
+      positive_type_name: "2"
+      negative_type_name: "1"
+      coordination_d0: !Quantity
+        value: 300.0
+        unit: nanometer
+      coordination_r0: !Quantity
+        value: 50.0
+        unit: nanometer
+      coordination_dmax: !Quantity
+        value: 400.0
+        unit: nanometer
+      nn_switch: 12
+      highcoord_threshold: 12.0
+    restraint_name: xP_rest
+    force_constant: !Quantity
+      value: 10000.0
+      unit: kilojoule/mole
+    center: 0.515
+    filename: colvars.csv
+    stride_interval: 10
+    print_interval: 10
 velocity_seed: 2
 wall_directions:
   - true

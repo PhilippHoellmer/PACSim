@@ -8,13 +8,15 @@ import numpy as np
 import openmm
 from openmm import app
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
-                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential)
+                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential, UmbrellaSamplingPotential)
 from colloids.gsd_reporter import GSDReporter
 from colloids.helper_functions import get_cell_from_box, read_gsd_file, write_gsd_file
 import colloids.integrators as integrators
+import colloids.collective_variables as collective_variables 
 from colloids.run_parameters import RunParameters
 from colloids.status_reporter import StatusReporter
 import colloids.update_reporters as update_reporters
+from colloids.umbrella_sampling import UmbrellaSamplingReporter
 from colloids.units import electric_potential_unit, length_unit
 
 
@@ -277,12 +279,46 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
+    if parameters.add_restraint:
+
+        restraints = []
+
+        for cv, restraint_parameters in parameters.umbrella_sampling_parameters.items():
+            cv_type = restraint_parameters["cv_type"]
+            cv_class = getattr(collective_variables, cv_type)
+            #cv_force =  getattr(collective_variables, cv_parameters["cv_type"])
+            cv_parameters = restraint_parameters.get("cv_parameters", {})
+            restraint_parameters.pop("cv_type")
+            restraint_parameters.pop("cv_parameters")
+            umbrella_parameters = restraint_parameters
+
+            cv = cv_class(topology=topology, system=system,**cv_parameters)
+            cv_force = cv.get_force(restraint_parameters)
+
+            restraints.append(UmbrellaSamplingPotential(umbrella_parameters["restraint_name"], cv_force, umbrella_parameters["center"], umbrella_parameters["force_constant"]))
+    else:
+        restraints = None
+    
+    
+    restraint_forces = []
+    
+    if restraints is not None:
+        for restraint in restraints:
+            force = restraint.yield_potentials()
+            force_group = system.getNumForces()
+            force.setForceGroup(force_group)
+            system.addForce(force)
+
+            restraint_forces.append({"force": force, "force_group": force_group})
+
     # -------------------------------------- Set up the simulation. ----------------------------------------------------
     if parameters.platform_name == "CUDA":
         simulation = app.Simulation(topology, system, integrator, platform,
                                     platformProperties={"Precision": "mixed"})
     else:
         simulation = app.Simulation(topology, system, integrator, platform)
+        if restraint_forces:
+            simulation.restraint_forces = restraint_forces
 
     return simulation
 
@@ -311,6 +347,20 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
                 f"UpdateReporter does not accept the given arguments {parameters.update_reporter_parameters}. "
                 f"The expected signature is {inspect.signature(update_reporter)} (the simulation and append_file "
                 f"arguments should not be specified).")
+    
+    if parameters.add_restraint:
+
+        for (cv, cv_parameters), umbrella in zip(parameters.umbrella_sampling_parameters.items(), simulation.restraint_forces):
+            simulation.reporters.append(
+                UmbrellaSamplingReporter(
+                    filename=cv_parameters["filename"],
+                    umbrella_force=umbrella["force"],
+                    force_group=umbrella["force_group"],
+                    print_interval=cv_parameters["print_interval"],
+                    append_file=append_file,
+                    )
+                )
+
     # The CheckpointReporter should always be last to ensure that all other reporters have been executed before it.
     simulation.reporters.append(app.CheckpointReporter(parameters.checkpoint_filename,
                                                        parameters.checkpoint_interval))
