@@ -293,7 +293,7 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             umbrella_parameters = restraint_parameters
 
             cv = cv_class(topology=topology, system=system,**cv_parameters)
-            cv_force = cv.get_force(restraint_parameters)
+            cv_force = cv.get_force()#restraint_parameters)
 
             restraints.append(UmbrellaSamplingPotential(umbrella_parameters["restraint_name"], cv_force, umbrella_parameters["center"], umbrella_parameters["force_constant"]))
     else:
@@ -317,8 +317,9 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
                                     platformProperties={"Precision": "mixed"})
     else:
         simulation = app.Simulation(topology, system, integrator, platform)
-        if restraint_forces:
-            simulation.restraint_forces = restraint_forces
+        
+    if restraint_forces:
+        simulation.restraint_forces = restraint_forces
 
     return simulation
 

@@ -38,7 +38,7 @@ minimize_energy_initially: false
 particle_density: !Quantity
   unit: gram/(centimeter**3)
   value: 1.05
-platform_name: Reference
+platform_name:  OpenCL
 plumed_script: null
 potential_temperature: !Quantity
   unit: kelvin
@@ -80,7 +80,29 @@ umbrella_sampling_parameters:
       value: 10000.0
       unit: kilojoule/mole
     center: 0.515
-    filename: colvars.csv
+    filename: colvars_xP.csv
+    stride_interval: 10
+    print_interval: 10
+  cv2:
+    cv_type: SteinhardtOrderParameterCV
+    cv_parameters:
+      coordination_d0: !Quantity
+        value: 300.0
+        unit: nanometer
+      coordination_r0: !Quantity
+        value: 50.0
+        unit: nanometer
+      coordination_dmax: !Quantity
+        value: 400.0
+        unit: nanometer
+      l: 6
+      highcoord_threshold: 12.0
+    restraint_name: q6_rest
+    force_constant: !Quantity
+      value: 100.0
+      unit: kilojoule/mole
+    center: 0.514
+    filename: colvars_q6.csv
     stride_interval: 10
     print_interval: 10
 velocity_seed: 2
