@@ -33,7 +33,24 @@ def _real_harmonic_definitions(x="x", y="y", z="z", r="r", l=6):
             "Y44s = 4*X*Y*(X^2 - Y^2)"
         )
     elif l==6:
-        defs = ()
+        defs = (
+            f"X = {x}/({r}+eps);"
+            f"Y = {y}/({r}+eps);"
+            f"Z = {z}/({r}+eps);"
+            "Y60 = 231*Z^6 - 315*Z^4 + 105*Z^2 - 5;"
+            "Y61c = X*Z*(33*Z^4 - 30*Z^2 + 5);"
+            "Y61s = Y*Z*(33*Z^4 - 30*Z^2 + 5);"
+            "Y62c = (X^2 - Y^2)*(33*Z^4 - 18*Z^2 + 1);"
+            "Y62s = 2*X*Y*(33*Z^4 - 18*Z^2 + 1);"
+            "Y63c = X*Z*(X^2 - 3*Y^2)*(11*Z^2 - 3);"
+            "Y63s = Y*Z*(3*X^2 - Y^2)*(11*Z^2 - 3);"
+            "Y64c = (X^4 - 6*X^2*Y^2 + Y^4)*(11*Z^2 - 1);"
+            "Y64s = 4*X*Y*(X^2 - Y^2)*(11*Z^2 - 1);"
+            "Y65c = X*Z*(X^4 - 10*X^2*Y^2 + 5*Y^4);"
+            "Y65s = Y*Z*(5*X^4 - 10*X^2*Y^2 + Y^4);"
+            "Y66c = X^6 - 15*X^4*Y^2 + 15*X^2*Y^4 - Y^6;"
+            "Y66s = 2*X*Y*(3*X^4 - 10*X^2*Y^2 + 3*Y^4)"
+        )
 
     else:
         raise ValueError(f"Spherical harmonic definitions not implemented for angular momentum number {l}.")
@@ -57,7 +74,21 @@ def _ql_component_names(l=6):
             "Y44s",
         ]
     elif l==6:
-        names = []
+        names = [
+            "Y60",
+            "Y61c",
+            "Y61s",
+            "Y62c",
+            "Y62s",
+            "Y63c",
+            "Y63s",
+            "Y64c",
+            "Y64s",
+            "Y65c",
+            "Y65s",
+            "Y66c",
+            "Y66s",
+        ]
     
     else:
         raise ValueError(f"Spherical harmonic definitions not implemented for angular momentum number {l}.")
@@ -208,7 +239,7 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
                 f"highcoord = {highcoord}",
                 CustomGBForce.SingleParticle,
             )
-            
+
         return force
 
     def get_force(self, l):
