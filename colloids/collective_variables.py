@@ -130,7 +130,7 @@ class SwitchingFunctions(ABC):
 
 
 class CollectiveVariableAbstract(ABC):
-    def __init__(self, topology=openmm.app.Topology, system=openmm.app.System):
+    def __init__(self, topology=openmm.app.Topology, system=openmm.System):
         pass
     
     @abstractmethod
@@ -143,7 +143,7 @@ class CollectiveVariableAbstract(ABC):
 
 
 class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
-    def __init__(self, topology=openmm.app.Topology, system=openmm.app.System, l=6, included_particles=None,
+    def __init__(self, topology=openmm.app.Topology, system=openmm.System, l=6, included_particles=None,
             coordination_d0=300.0 * length_unit, coordination_r0=50.0 * length_unit, coordination_dmax=400.0 * length_unit,
             ql_d0=230.0 * length_unit, ql_r0=10.0 * length_unit, ql_dmax=260.0 * length_unit,
             highcoord_threshold=12.0, highcoord_nn=12):
@@ -154,6 +154,7 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
         self._coordination_d0 = coordination_d0
         self._coordination_r0 = coordination_r0
         self._coordination_dmax = coordination_dmax
+        self._l = l
         self._ql_d0 = ql_d0
         self._ql_r0 = ql_r0
         self._ql_dmax = ql_dmax
@@ -164,7 +165,7 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
             for particle_type in self._particle_types
         ]
     
-    def compute_cv(self, name, include_particles, l, cv_type):
+    def compute_cv(self, name, l, cv_type):
 
         force = CustomGBForce()
         force.setName(name)
@@ -192,10 +193,10 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
             self._ql_dmax.value_in_unit(length_unit),
         ))
         
-        coordination_switch = SwitchingFunctions.exponential(
+        coordination_switch = SwitchingFunctions.get_exponential_switching_function_str(
             r="r", d0="coordination_d0", r0="coordination_r0", dmax="coordination_dmax")
         
-        highcoord = SwitchingFunctions.more_than(
+        highcoord = SwitchingFunctions.get_more_than_str(
             x="coord", threshold="highcoord_threshold", nn="nn")
         
         
@@ -210,7 +211,7 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
         
         elif cv_type == 'order':
 
-            ql_switch = SwitchingFunctions.exponential(
+            ql_switch = SwitchingFunctions.get_exponential_switching_function_str(
                 r="r", d0="ql_d0", r0="ql_r0", dmax="ql_dmax")
         
             ql_i = _ql_magnitude_expression()
@@ -242,15 +243,15 @@ class SteinhardtOrderParameterCV(CollectiveVariableAbstract):
 
         return force
 
-    def get_force(self, l):
+    def get_force(self):
         ql_cv = CustomCVForce(
             f"ql_highcoord;"
             f"ql_highcoord = ql_numerator / (highcoord_count + eps)"
         )
-        ql_cv.setName(f"q{l}_highcoord")
+        ql_cv.setName(f"q{self._l}_highcoord")
         ql_cv.addGlobalParameter("eps", _EPSILON)
-        ql_cv.addCollectiveVariable("ql_numerator", self.get_cv_force(l, cv_type="order"))
-        ql_cv.addCollectiveVariable("highcoord_count", self.get_cv_force(l, cv_type="highcoord"))
+        ql_cv.addCollectiveVariable("ql_numerator", self.compute_cv("ql_numerator", self._l, cv_type="order"))
+        ql_cv.addCollectiveVariable("highcoord_count", self.compute_cv("highcoord_count", self._l, cv_type="highcoord"))
         return ql_cv
 
 
@@ -259,7 +260,6 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
     def __init__(self, topology: openmm.app.Topology, system: openmm.System, positive_type_name="2", negative_type_name="1",
                  ignore_types=None, coordination_d0 = 300.0 * length_unit, coordination_r0 =  50.0 * length_unit, coordination_dmax = 400.0 * length_unit,
                  nn_switch = 12, highcoord_threshold = 12.0):
-        super.__init__()
         self._coordination_d0 = coordination_d0
         self._coordination_r0 =  coordination_r0
         self._coordination_dmax = coordination_dmax
