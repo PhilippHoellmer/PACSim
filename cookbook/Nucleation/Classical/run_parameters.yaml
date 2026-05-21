@@ -47,5 +47,6 @@ update_reporter: null
 update_reporter_parameters: null
 use_depletion: false
 use_gravity: false
+use_pbc: false
 use_log: false
 velocity_seed: 1

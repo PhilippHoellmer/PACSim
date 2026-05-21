@@ -18,4 +18,3 @@ surface_potentials:
   "1": !Quantity
     unit: millivolt
     value: 0.0
-random_rotation: false

@@ -42,6 +42,7 @@ checkpoint_filename: checkpoint.chk
 state_data_filename: state_data.csv
 trajectory_filename: trajectory.gsd
 platform_name: CUDA
+use_pbc: false
 minimize_energy_initially: false
 update_reporter: null
 update_reporter_parameters: null
