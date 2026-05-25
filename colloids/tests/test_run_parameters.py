@@ -51,7 +51,7 @@ class TestRunParameters(object):
     def test_run_parameters(self, parameters, yaml_parameters):
         # Because we cannot compare openmm quantities directly (see above), we have to compare all fields explicitly.
         # When new fields are added to the RunParameters dataclass, this test must be updated accordingly.
-        assert len(fields(parameters)) == len(fields(yaml_parameters)) == 42
+        assert len(fields(parameters)) == len(fields(yaml_parameters)) == 41
         assert parameters.initial_configuration == yaml_parameters.initial_configuration
         assert parameters.frame_index == yaml_parameters.frame_index
         assert parameters.platform_name == yaml_parameters.platform_name
@@ -59,8 +59,7 @@ class TestRunParameters(object):
                 == pytest.approx(
                     yaml_parameters.potential_temperature.value_in_unit(parameters.potential_temperature.unit),
                     rel=1e-12, abs=1e-12))
-        assert parameters.integrator == yaml_parameters.integrator
-        assert parameters.integrator_parameters == yaml_parameters.integrator_parameters
+        assert parameters.integrators == yaml_parameters.integrators
         assert (parameters.brush_density.value_in_unit(parameters.brush_density.unit)
                 == pytest.approx(yaml_parameters.brush_density.value_in_unit(parameters.brush_density.unit), rel=1e-12,
                                  abs=1e-12))
@@ -102,6 +101,21 @@ class TestRunParameters(object):
         assert parameters.update_reporter_parameters == yaml_parameters.update_reporter_parameters
         assert parameters.use_plumed == yaml_parameters.use_plumed
         assert parameters.plumed_script == yaml_parameters.plumed_script
+
+    def test_legacy_integrator_fields_are_migrated(self):
+        parameters = RunParameters.from_dict({
+            "initial_configuration": "first_frame.gsd",
+            "integrator": "LangevinIntegrator",
+            "integrator_parameters": {
+                "temperature": 298.0 * unit.kelvin,
+                "stepSize": 0.00317647015905543 * unit.picosecond,
+                "frictionCoeff": 0.001574074286750681 / unit.picosecond,
+                "randomNumberSeed": None,
+            },
+        })
+
+        assert list(parameters.integrators) == ["LangevinIntegrator"]
+        assert parameters.integrators["LangevinIntegrator"]["randomNumberSeed"] is None
 
 
 if __name__ == '__main__':

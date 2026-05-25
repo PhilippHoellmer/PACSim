@@ -308,6 +308,77 @@ def VariableVerletIntegrator(errorTol: float, maximumStepSize: Optional[unit.Qua
 
 
 # noinspection PyPep8Naming
+def MonteCarloBarostat(temperature: unit.Quantity, pressure: unit.Quantity, frequency: int = 25) -> openmm.Force:
+    """
+    Function to return the OpenMM Monte Carlo barostat that defines the keyword arguments (in contrast to OpenMM).
+
+    The following is the OpenMM documentation for the Monte Carlo barostat (see
+    https://docs.openmm.org/latest/api-python/generated/openmm.openmm.MonteCarloBarostat.html).
+
+    :param temperature:
+        The temperature of the heat bath (in Kelvin).
+    :type temperature: unit.Quantity
+    :param pressure:
+        The target pressure for the Monte Carlo barostat.
+    :type pressure: unit.Quantity
+    :param frequency:
+        The number of integration steps between Monte Carlo barostat attempts.
+    :type frequency: int
+
+    :return:
+        The Monte Carlo barostat.
+    :rtype: openmm.Force
+    """
+    # Checks of units and values are done within OpenMM.
+    return openmm.MonteCarloBarostat(pressure, temperature, frequency)
+
+
+# noinspection PyPep8Naming
+def MonteCarloAnisotropicBarostat(temperature: unit.Quantity, pressure_x: unit.Quantity, pressure_y: unit.Quantity,
+                                  pressure_z: unit.Quantity, scale_x: bool = True, scale_y: bool = True,
+                                  scale_z: bool = True, frequency: int = 25) -> openmm.Force:
+    """
+    Function to return the OpenMM Monte Carlo anisotropic barostat that defines the keyword arguments.
+
+    The following is the OpenMM documentation for the Monte Carlo anisotropic barostat (see
+    https://docs.openmm.org/latest/api-python/generated/openmm.openmm.MonteCarloAnisotropicBarostat.html).
+
+    :param temperature:
+        The temperature of the heat bath (in Kelvin).
+    :type temperature: unit.Quantity
+    :param pressure_x:
+        The pressure applied to the x axis.
+    :type pressure_x: unit.Quantity
+    :param pressure_y:
+        The pressure applied to the y axis.
+    :type pressure_y: unit.Quantity
+    :param pressure_z:
+        The pressure applied to the z axis.
+    :type pressure_z: unit.Quantity
+    :param scale_x:
+        Whether the x dimension of the periodic box may change size.
+    :type scale_x: bool
+    :param scale_y:
+        Whether the y dimension of the periodic box may change size.
+    :type scale_y: bool
+    :param scale_z:
+        Whether the z dimension of the periodic box may change size.
+    :type scale_z: bool
+    :param frequency:
+        The number of integration steps between Monte Carlo barostat attempts.
+    :type frequency: int
+
+    :return:
+        The Monte Carlo anisotropic barostat.
+    :rtype: openmm.Force
+    """
+    # Checks of units and values are done within OpenMM.
+    pressure = openmm.Vec3(pressure_x.value_in_unit(unit.bar), pressure_y.value_in_unit(unit.bar),
+                           pressure_z.value_in_unit(unit.bar))
+    return openmm.MonteCarloAnisotropicBarostat(pressure, temperature, scale_x, scale_y, scale_z, frequency)
+
+
+# noinspection PyPep8Naming
 def VerletIntegrator(stepSize: unit.Quantity) -> openmm.Integrator:
     """
     Function to return the OpenMM Verlet integrator that defines the keyword arguments (in contrast to OpenMM).
@@ -327,3 +398,16 @@ def VerletIntegrator(stepSize: unit.Quantity) -> openmm.Integrator:
     """
     # Checks of units and values are done within OpenMM.
     return openmm.VerletIntegrator(stepSize)
+
+
+INTEGRATORS = {
+    "BrownianIntegrator": BrownianIntegrator,
+    "LangevinIntegrator": LangevinIntegrator,
+    "LangevinMiddleIntegrator": LangevinMiddleIntegrator,
+    "MonteCarloAnisotropicBarostat": MonteCarloAnisotropicBarostat,
+    "MonteCarloBarostat": MonteCarloBarostat,
+    "NoseHooverIntegrator": NoseHooverIntegrator,
+    "VariableLangevinIntegrator": VariableLangevinIntegrator,
+    "VariableVerletIntegrator": VariableVerletIntegrator,
+    "VerletIntegrator": VerletIntegrator,
+}

@@ -59,6 +59,15 @@ class ExampleAction(argparse.Action):
         parser.exit()
 
 
+def initialize_integrators(parameters: RunParameters):
+    """Instantiate all configured integrator and barostat objects at the start of a run."""
+    integrator_parameter_sets = parameters.integrators
+    return {
+        integrator_name: integrators.INTEGRATORS[integrator_name](**integrator_parameters)
+        for integrator_name, integrator_parameters in integrator_parameter_sets.items()
+    }
+
+
 def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:
     """Check the frame and the run parameters."""
     for diameter in frame.particles.diameter:
@@ -103,7 +112,7 @@ def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:
             raise ValueError("A substrate can only be used if z walls are active.")
 
 
-def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.Simulation:
+def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integrator_objects) -> app.Simulation:
     radii = frame.particles.diameter / 2.0 * length_unit
     surface_potentials = frame.particles.charge * electric_potential_unit
 
@@ -167,7 +176,20 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
     # TODO: Prevent printing the traceback when the platform is not existing.
     platform = openmm.Platform.getPlatformByName(parameters.platform_name)
 
-    integrator = getattr(integrators, parameters.integrator)(**parameters.integrator_parameters)
+    integrator = None
+    extra_forces = []
+    for integrator_object in integrator_objects.values():
+        if isinstance(integrator_object, openmm.Integrator):
+            if integrator is not None:
+                raise ValueError("Only one OpenMM integrator can be specified; additional entries must be barostats or other forces.")
+            integrator = integrator_object
+        elif isinstance(integrator_object, openmm.Force):
+            extra_forces.append(integrator_object)
+        else:
+            raise TypeError(f"Configured object {integrator_object!r} is neither an OpenMM Integrator nor an OpenMM Force.")
+
+    if integrator is None:
+        raise ValueError("At least one OpenMM integrator must be specified.")
 
     potentials_parameters = ColloidPotentialsParameters(
         brush_density=parameters.brush_density, brush_length=parameters.brush_length,
@@ -276,6 +298,10 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
+    for force in extra_forces:
+        force.setForceGroup(system.getNumForces())
+        system.addForce(force)
+
     # -------------------------------------- Set up the simulation. ----------------------------------------------------
     if parameters.platform_name == "CUDA":
         simulation = app.Simulation(topology, system, integrator, platform,
@@ -328,11 +354,13 @@ def colloids_run(argv: Sequence[str]) -> app.Simulation:
 
     parameters = RunParameters.from_yaml(args.yaml_file)
 
+    integrator_objects = initialize_integrators(parameters)
+
     frame = read_gsd_file(parameters.initial_configuration, parameters.frame_index)
 
     check_frame(parameters, frame)
 
-    simulation = set_up_simulation(parameters, frame)
+    simulation = set_up_simulation(parameters, frame, integrator_objects)
 
     if args.checkpoint_file is not None:
         if not args.checkpoint_file.endswith(".chk"):

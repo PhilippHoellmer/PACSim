@@ -9,6 +9,47 @@ import colloids.update_reporters as update_reporters
 from colloids.units import energy_unit, length_unit, temperature_unit, time_unit, electric_potential_unit
 
 
+def _validate_integrator_parameters(integrator: str, integrator_parameters: dict[str, Any]) -> None:
+    """Check that the integrator exists and accepts the supplied keyword arguments."""
+    if integrator not in integrators.INTEGRATORS:
+        raise ValueError(f"Integrator {integrator} not available, the integrator must be one of the following: "
+                         f"{', '.join(integrators.INTEGRATORS)}.")
+    integrator_getter = integrators.INTEGRATORS[integrator]
+    try:
+        integrator_getter(**integrator_parameters)
+    except TypeError:
+        raise TypeError(f"Integrator {integrator} does not accept the given arguments {integrator_parameters}. "
+                        f"The expected signature is {inspect.signature(integrator_getter)}")
+
+
+def _normalize_integrators(params: dict[str, Any]) -> dict[str, Any]:
+    """Normalize legacy integrator fields into the ordered integrators mapping."""
+    if "integrators" in params:
+        if "integrator" in params or "integrator_parameters" in params:
+            raise ValueError("Cannot specify both the new 'integrators' field and the legacy integrator fields.")
+        return params
+
+    if "integrator" in params:
+        integrator_name = params.pop("integrator")
+        integrator_parameters = params.pop("integrator_parameters", {})
+        if isinstance(integrator_parameters, dict) and integrator_parameters and all(
+                isinstance(value, dict) for value in integrator_parameters.values()) and integrator_name in integrator_parameters:
+            params["integrators"] = integrator_parameters
+        else:
+            params["integrators"] = {integrator_name: integrator_parameters}
+        return params
+
+    if "integrator_parameters" in params:
+        integrator_parameters = params.pop("integrator_parameters")
+        if not isinstance(integrator_parameters, dict) or not integrator_parameters:
+            raise ValueError("The legacy integrator parameters must be a non-empty dictionary.")
+        if all(isinstance(value, dict) for value in integrator_parameters.values()):
+            params["integrators"] = integrator_parameters
+            return params
+
+    return params
+
+
 @dataclass(order=True, frozen=True)
 class RunParameters(Parameters):
     """
@@ -65,21 +106,14 @@ class RunParameters(Parameters):
         The unit of the temperature must be compatible with kelvin and the value must be greater than zero.
         Defaults to 298.0 * unit.kelvin.
     :type potential_temperature: unit.Quantity
-    :param integrator:
-        The name of the OpenMM integrator to use for the molecular-dynamics simulations.
-        Possible choices are "BrownianIntegrator", "LangevinIntegrator", LangevinMiddleIntegrator",
-        "NoseHooverIntegrator", "VariableLangevinIntegrator", "VariableVerletIntegrator", and "VerletIntegrator".
-        Defaults to "LangevinIntegrator".
-    :type integrator: str
-    :param integrator_parameters:
-        The parameters that are forwarded to initialize the OpenMM integrator.
-        Each integrator has specific parameters, and the parameters passed in here must be compatible with the chosen
-        integrator. See the corresponding integrator in the OpenMM documentation
-        https://docs.openmm.org/latest/api-python/library.html#integrators for the possible arguments (or, alternatively,
-        the colloids.integrators module).
-        Defaults to sensible values for the LangevinIntegrator (temperature of 298 K, frictionCoeff of
-        0.001574074286750681 / ps, stepSize of 0.00317647015905543 ps, and no specified random number seed).
-    :type integrator_parameters: dict[str, Any]
+    :param integrators:
+        An ordered mapping of OpenMM integrator and barostat names to the keyword arguments used to initialize them.
+        The keys are the names of the constructors defined in the colloids.integrators module and the values are the
+        keyword-argument dictionaries that are forwarded to those constructors. The first OpenMM integrator entry is
+        used as the simulation integrator; any additional entries may be barostats or other Force-like system objects.
+        Defaults to a LangevinIntegrator with temperature of 298 K, frictionCoeff of 0.001574074286750681 / ps,
+        stepSize of 0.00317647015905543 ps, and no specified random number seed.
+    :type integrators: dict[str, dict[str, Any]]
     :param brush_density:
         The polymer surface density in the Alexander-de Gennes polymer brush model [i.e., sigma in eq. (1)].
         The unit of the brush_density must be compatible with 1/nanometer^2 and the value must be greater than zero.
@@ -281,13 +315,14 @@ class RunParameters(Parameters):
     frame_index: int = -1
     platform_name: str = "Reference"
     potential_temperature: unit.Quantity = field(default_factory=lambda: 298.0 * temperature_unit)
-    integrator: str = "LangevinIntegrator"
-    integrator_parameters: dict[str, Any] = field(
+    integrators: dict[str, dict[str, Any]] = field(
         default_factory=lambda: {
-            "temperature": 298.0 * temperature_unit,
-            "stepSize": 0.00317647015905543 * time_unit,
-            "frictionCoeff": 0.001574074286750681 / time_unit,
-            "randomNumberSeed": None
+            "LangevinIntegrator": {
+                "temperature": 298.0 * temperature_unit,
+                "stepSize": 0.00317647015905543 * time_unit,
+                "frictionCoeff": 0.001574074286750681 / time_unit,
+                "randomNumberSeed": None
+            }
         })
     brush_density: unit.Quantity = field(default_factory=lambda: 0.09 / (length_unit ** 2))
     brush_length: unit.Quantity = field(default_factory=lambda: 10.6 * length_unit)
@@ -326,23 +361,21 @@ class RunParameters(Parameters):
     use_plumed: bool = False
     plumed_script: Optional[str] = None
 
+    @classmethod
+    def from_dict(cls, params: dict[str, Any]) -> "RunParameters":
+        """Read the parameters from a dictionary and migrate legacy integrator fields if needed."""
+        return super().from_dict(_normalize_integrators(dict(params)))
+
     def __post_init__(self) -> None:
         """Check if the parameters are valid after initialization."""
         if not self.initial_configuration.endswith(".gsd"):
             raise ValueError("The filename of the initial configuration must end with '.gsd'.")
         if self.platform_name not in ["Reference", "CPU", "CUDA", "OpenCL"]:
             raise ValueError("The platform name must be 'Reference', 'CPU', 'CUDA', or 'OpenCL'.")
-        possible_integrators = [name for name, _ in inspect.getmembers(integrators, inspect.isfunction)]
-        if self.integrator not in possible_integrators:
-            raise ValueError(f"Integrator {self.integrator} not available, the integrator must be one of the "
-                             f"following: {', '.join(possible_integrators)}.")
-        integrator_getter = getattr(integrators, self.integrator)
-        try:
-            integrator_getter(**self.integrator_parameters)
-        except TypeError:
-            raise TypeError(f"Integrator {self.integrator} does not accept the given arguments "
-                            f"{self.integrator_parameters}. The expected signature is "
-                            f"{inspect.signature(integrator_getter)}")
+        if not self.integrators:
+            raise ValueError("At least one integrator must be specified.")
+        for integrator_name, integrator_parameters in self.integrators.items():
+            _validate_integrator_parameters(integrator_name, integrator_parameters)
         if not self.potential_temperature.unit.is_compatible(temperature_unit):
             raise TypeError("The temperature must have a unit compatible with kelvin.")
         if self.potential_temperature <= 0.0 * temperature_unit:

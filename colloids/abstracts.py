@@ -434,7 +434,7 @@ class Parameters(object):
         :type filename: str
         """
         with open(filename, "w") as f:
-            yaml.dump(self.to_dict(), f, default_flow_style=False)
+            yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
 
     def to_dict(self) -> dict[str, Any]:
         """
