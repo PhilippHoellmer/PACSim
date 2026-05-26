@@ -57,7 +57,7 @@ class CollectiveVariableAbstract(ABC):
     """
 
     def __init__(self, topology=openmm.app.Topology, system=openmm.System):
-  
+        pass
     
     @abstractmethod
     def compute_cv(self) -> openmm.Force:
@@ -113,7 +113,7 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
     """
 
     def __init__(self, topology: openmm.app.Topology, system: openmm.System, target_particle_type: str, coordination_d0: unit.Quantity, 
-                coordination_r0: unit.Quantity, coordination_dmax: unit.Quantity, highcoord_threshold: float, nn_switch = 12, 
+                coordination_r0: unit.Quantity, coordination_dmax: unit.Quantity, highcoord_threshold: float, 
                 ignore_types: Optional[Sequence[str]] = None):
         
         self._uses_pbc = system.usesPeriodicBoundaryConditions()
@@ -126,13 +126,15 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
             raise ValueError("The high coordination threshold must be a positive value.")
         if not all(param.unit.is_compatible(length_unit) for param in (coordination_r0, coordination_d0, coordination_dmax)):
             raise TypeError("Switching function parameters must all have a unit that is compatible with nanometers")
-        if coordination_r0 <=0 or coordination_d0 <=0 or coordination_dmax <=0: 
+        if coordination_r0.value_in_unit(length_unit) <=0 or coordination_d0.value_in_unit(length_unit) <=0 or coordination_dmax.value_in_unit(length_unit) <=0: 
             raise ValueError("Switching function parameters must all be positive values")
 
         self._nn_high_coord = 12
         self._highcoord_threshold = highcoord_threshold
-
+        
+        self._is_target = []
         self._target_particle_type = target_particle_type
+    
         self._ignore_types = ignore_types
         self._include_particles = []
         
@@ -143,6 +145,7 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
                 include_particle = int(particle_type not in self._ignore_types)
 
             self._include_particles.append(include_particle)
+            self._is_target.append(int(particle_type == self._target_particle_type))
 
         
         self._coordination_d0 = coordination_d0
@@ -150,7 +153,7 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
         self._coordination_dmax = coordination_dmax
 
 
-    def compute_cv(self, name, target_particle_type):
+    def compute_cv(self, name: str, weight_parameter: str):
         force = CustomGBForce()
         force.setName(name)
 
@@ -186,9 +189,10 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
         )
 
         force.addEnergyTerm(
-            f"{target_particle_type} * ({high_coord})",
+            f"{weight_parameter} * ({high_coord})",
             CustomGBForce.SingleParticle,
-        )
+            )
+
 
         for include_particle, is_target in zip(self._include_particles,
                                                 self._is_target):
@@ -207,18 +211,21 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
 
     def get_force(self):
 
-        target_highcoord = self.compute_cv(name="p_highcoord", target_particle_type=self._target_particle_type)
+        target_highcoord = self.compute_cv(
+            name="target_highcoord",
+            weight_parameter="include_particles * is_target",
+            )
 
-        all_highcoord = ""
-
-        for i in self._include_particles:
-            all_highcoord+= self.compute_cv(name=str(i), type_parameter="is_target")
-
+        all_highcoord = self.compute_cv(
+                name="all_highcoord",
+            weight_parameter="include_particles",
+            )
+        
         x_force = CustomCVForce("x_i;"
                                  "x_i = target_highcoord / (all_highcoord + eps)"
                                  )
         
-        x_force.setName("xP_crystal")
+        x_force.setName("highcoord_composition_cv")
 
         x_force.addGlobalParameter("eps", _EPSILON)
         x_force.addCollectiveVariable("target_highcoord", target_highcoord)

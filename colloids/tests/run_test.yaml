@@ -62,8 +62,8 @@ umbrella_sampling_parameters:
   cv1:
     cv_type: HighCoordCompositionCV
     cv_parameters:
-      positive_type_name: "2"
-      negative_type_name: "1"
+      target_particle_type: "2"
+      ignore_types: null
       coordination_d0: !Quantity
         value: 300.0
         unit: nanometer
@@ -73,7 +73,6 @@ umbrella_sampling_parameters:
       coordination_dmax: !Quantity
         value: 400.0
         unit: nanometer
-      nn_switch: 12
       highcoord_threshold: 12.0
     restraint_name: xP_rest
     force_constant: !Quantity
@@ -81,28 +80,6 @@ umbrella_sampling_parameters:
       unit: kilojoule/mole
     center: 0.515
     filename: colvars_xP.csv
-    stride_interval: 10
-    print_interval: 10
-  cv2:
-    cv_type: SteinhardtOrderParameterCV
-    cv_parameters:
-      coordination_d0: !Quantity
-        value: 300.0
-        unit: nanometer
-      coordination_r0: !Quantity
-        value: 50.0
-        unit: nanometer
-      coordination_dmax: !Quantity
-        value: 400.0
-        unit: nanometer
-      l: 6
-      highcoord_threshold: 12.0
-    restraint_name: q6_rest
-    force_constant: !Quantity
-      value: 100.0
-      unit: kilojoule/mole
-    center: 0.514
-    filename: colvars_q6.csv
     stride_interval: 10
     print_interval: 10
 velocity_seed: 2

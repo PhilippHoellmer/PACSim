@@ -36,7 +36,7 @@ class UmbrellaSamplingPotential:
 
     def __init__(self, name: str, cv_force: openmm.CustomCVForce, center: float, force_constant: unit.Quantity) -> None:
         
-        if not force_constant.is_compatible(energy_unit):
+        if not force_constant.unit.is_compatible(energy_unit):
             raise TypeError("Force constant must have a unit compatible with kilojoules per mole.")
         
         self._name = name
