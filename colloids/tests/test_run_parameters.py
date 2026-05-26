@@ -51,7 +51,7 @@ class TestRunParameters(object):
     def test_run_parameters(self, parameters, yaml_parameters):
         # Because we cannot compare openmm quantities directly (see above), we have to compare all fields explicitly.
         # When new fields are added to the RunParameters dataclass, this test must be updated accordingly.
-        assert len(fields(parameters)) == len(fields(yaml_parameters)) == 41
+        assert len(fields(parameters)) == len(fields(yaml_parameters)) == 43
         assert parameters.initial_configuration == yaml_parameters.initial_configuration
         assert parameters.frame_index == yaml_parameters.frame_index
         assert parameters.platform_name == yaml_parameters.platform_name
@@ -60,6 +60,8 @@ class TestRunParameters(object):
                     yaml_parameters.potential_temperature.value_in_unit(parameters.potential_temperature.unit),
                     rel=1e-12, abs=1e-12))
         assert parameters.integrators == yaml_parameters.integrators
+        assert parameters.barostat == yaml_parameters.barostat
+        assert parameters.barostat_parameters == yaml_parameters.barostat_parameters
         assert (parameters.brush_density.value_in_unit(parameters.brush_density.unit)
                 == pytest.approx(yaml_parameters.brush_density.value_in_unit(parameters.brush_density.unit), rel=1e-12,
                                  abs=1e-12))

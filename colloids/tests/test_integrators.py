@@ -3,7 +3,7 @@ import openmm
 import pytest
 
 import colloids.integrators as integrators
-from colloids.colloids_run import initialize_integrators
+from colloids.colloids_run import initialize_barostat, initialize_integrators
 from colloids.run_parameters import RunParameters
 
 
@@ -51,22 +51,44 @@ class TestIntegrators(object):
             return fake_integrator
 
         monkeypatch.setitem(integrators.INTEGRATORS, "AlphaIntegrator", make_fake_integrator("AlphaIntegrator"))
-        monkeypatch.setitem(integrators.INTEGRATORS, "BetaBarostat", make_fake_integrator("BetaBarostat"))
+        monkeypatch.setitem(integrators.INTEGRATORS, "BetaIntegrator", make_fake_integrator("BetaIntegrator"))
 
         parameters = RunParameters(
             initial_configuration="first_frame.gsd",
             integrators={
                 "AlphaIntegrator": {"value": 1},
-                "BetaBarostat": {"value": 2},
+                "BetaIntegrator": {"value": 2},
             },
         )
 
         calls.clear()
         integrator_objects = initialize_integrators(parameters)
 
-        assert list(integrator_objects) == ["AlphaIntegrator", "BetaBarostat"]
-        assert integrator_objects == {"AlphaIntegrator": "AlphaIntegrator", "BetaBarostat": "BetaBarostat"}
-        assert calls == [("AlphaIntegrator", {"value": 1}), ("BetaBarostat", {"value": 2})]
+        assert list(integrator_objects) == ["AlphaIntegrator", "BetaIntegrator"]
+        assert integrator_objects == {"AlphaIntegrator": "AlphaIntegrator", "BetaIntegrator": "BetaIntegrator"}
+        assert calls == [("AlphaIntegrator", {"value": 1}), ("BetaIntegrator", {"value": 2})]
+
+    def test_initialize_barostat_builds_optional_barostat(self, monkeypatch):
+        calls = []
+
+        def fake_barostat(**kwargs):
+            calls.append(kwargs)
+            return "barostat"
+
+        monkeypatch.setitem(integrators.INTEGRATORS, "MonteCarloBarostat", fake_barostat)
+
+        parameters = RunParameters(
+            initial_configuration="first_frame.gsd",
+            barostat="MonteCarloBarostat",
+            barostat_parameters={"temperature": 300.0 * unit.kelvin, "pressure": 1.0 * unit.bar,
+                                 "frequency": 25},
+        )
+
+        calls.clear()
+        barostat = initialize_barostat(parameters)
+
+        assert barostat == "barostat"
+        assert calls == [{"temperature": 300.0 * unit.kelvin, "pressure": 1.0 * unit.bar, "frequency": 25}]
 
 
 if __name__ == '__main__':

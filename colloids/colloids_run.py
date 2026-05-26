@@ -60,12 +60,19 @@ class ExampleAction(argparse.Action):
 
 
 def initialize_integrators(parameters: RunParameters):
-    """Instantiate all configured integrator and barostat objects at the start of a run."""
+    """Instantiate all configured integrators at the start of a run."""
     integrator_parameter_sets = parameters.integrators
     return {
         integrator_name: integrators.INTEGRATORS[integrator_name](**integrator_parameters)
         for integrator_name, integrator_parameters in integrator_parameter_sets.items()
     }
+
+
+def initialize_barostat(parameters: RunParameters):
+    """Instantiate the optional barostat at the start of a run."""
+    if parameters.barostat is None:
+        return None
+    return integrators.INTEGRATORS[parameters.barostat](**parameters.barostat_parameters)
 
 
 def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:
@@ -112,7 +119,8 @@ def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:
             raise ValueError("A substrate can only be used if z walls are active.")
 
 
-def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integrator_objects) -> app.Simulation:
+def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integrator_objects,
+                      barostat_object) -> app.Simulation:
     radii = frame.particles.diameter / 2.0 * length_unit
     surface_potentials = frame.particles.charge * electric_potential_unit
 
@@ -177,16 +185,12 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integra
     platform = openmm.Platform.getPlatformByName(parameters.platform_name)
 
     integrator = None
-    extra_forces = []
     for integrator_object in integrator_objects.values():
-        if isinstance(integrator_object, openmm.Integrator):
-            if integrator is not None:
-                raise ValueError("Only one OpenMM integrator can be specified; additional entries must be barostats or other forces.")
-            integrator = integrator_object
-        elif isinstance(integrator_object, openmm.Force):
-            extra_forces.append(integrator_object)
-        else:
-            raise TypeError(f"Configured object {integrator_object!r} is neither an OpenMM Integrator nor an OpenMM Force.")
+        if not isinstance(integrator_object, openmm.Integrator):
+            raise TypeError(f"Configured object {integrator_object!r} is not an OpenMM Integrator.")
+        if integrator is not None:
+            raise ValueError("Only one OpenMM integrator can be specified.")
+        integrator = integrator_object
 
     if integrator is None:
         raise ValueError("At least one OpenMM integrator must be specified.")
@@ -298,9 +302,9 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integra
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
-    for force in extra_forces:
-        force.setForceGroup(system.getNumForces())
-        system.addForce(force)
+    if barostat_object is not None:
+        barostat_object.setForceGroup(system.getNumForces())
+        system.addForce(barostat_object)
 
     # -------------------------------------- Set up the simulation. ----------------------------------------------------
     if parameters.platform_name == "CUDA":
@@ -321,10 +325,9 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
                                             cell=get_cell_from_box(initial_frame.configuration.box) * length_unit))
     simulation.reporters.append(StatusReporter(max(1, total_number_steps // 100), total_number_steps,
                                                desc="Production"))
-    simulation.reporters.append(app.StateDataReporter(parameters.state_data_filename,
-                                                      parameters.state_data_interval, time=True,
-                                                      kineticEnergy=True, potentialEnergy=True, temperature=True,
-                                                      speed=True, append=append_file))
+    simulation.reporters.append(app.statedatareporter.StateDataReporter(parameters.state_data_filename, parameters.state_data_interval,
+                                                  time=True, kineticEnergy=True, potentialEnergy=True,
+                                                  temperature=True, speed=True, append=append_file))
 
     if parameters.update_reporter is not None:
         update_reporter = getattr(update_reporters, parameters.update_reporter)
@@ -355,12 +358,13 @@ def colloids_run(argv: Sequence[str]) -> app.Simulation:
     parameters = RunParameters.from_yaml(args.yaml_file)
 
     integrator_objects = initialize_integrators(parameters)
+    barostat_object = initialize_barostat(parameters)
 
     frame = read_gsd_file(parameters.initial_configuration, parameters.frame_index)
 
     check_frame(parameters, frame)
 
-    simulation = set_up_simulation(parameters, frame, integrator_objects)
+    simulation = set_up_simulation(parameters, frame, integrator_objects, barostat_object)
 
     if args.checkpoint_file is not None:
         if not args.checkpoint_file.endswith(".chk"):

@@ -22,6 +22,26 @@ def _validate_integrator_parameters(integrator: str, integrator_parameters: dict
                         f"The expected signature is {inspect.signature(integrator_getter)}")
 
 
+def _validate_barostat_parameters(barostat: Optional[str], barostat_parameters: Optional[dict[str, Any]]) -> None:
+    """Check that the optional barostat exists and accepts the supplied keyword arguments."""
+    if barostat is None:
+        if barostat_parameters is not None:
+            raise ValueError("Barostat parameters must not be specified if no barostat is selected.")
+        return
+
+    if barostat not in integrators.INTEGRATORS:
+        raise ValueError(f"Barostat {barostat} not available, the barostat must be one of the following: "
+                         f"{', '.join(integrators.INTEGRATORS)}.")
+    if barostat_parameters is None:
+        raise ValueError("Barostat parameters must be specified if a barostat is selected.")
+    barostat_getter = integrators.INTEGRATORS[barostat]
+    try:
+        barostat_getter(**barostat_parameters)
+    except TypeError:
+        raise TypeError(f"Barostat {barostat} does not accept the given arguments {barostat_parameters}. "
+                        f"The expected signature is {inspect.signature(barostat_getter)}")
+
+
 def _normalize_integrators(params: dict[str, Any]) -> dict[str, Any]:
     """Normalize legacy integrator fields into the ordered integrators mapping."""
     if "integrators" in params:
@@ -107,13 +127,21 @@ class RunParameters(Parameters):
         Defaults to 298.0 * unit.kelvin.
     :type potential_temperature: unit.Quantity
     :param integrators:
-        An ordered mapping of OpenMM integrator and barostat names to the keyword arguments used to initialize them.
+        An ordered mapping of OpenMM integrator names to the keyword arguments used to initialize them.
         The keys are the names of the constructors defined in the colloids.integrators module and the values are the
         keyword-argument dictionaries that are forwarded to those constructors. The first OpenMM integrator entry is
-        used as the simulation integrator; any additional entries may be barostats or other Force-like system objects.
+        used as the simulation integrator.
         Defaults to a LangevinIntegrator with temperature of 298 K, frictionCoeff of 0.001574074286750681 / ps,
         stepSize of 0.00317647015905543 ps, and no specified random number seed.
     :type integrators: dict[str, dict[str, Any]]
+    :param barostat:
+        The name of the OpenMM barostat to add to the system, or None if no barostat is used.
+        Defaults to None.
+    :type barostat: Optional[str]
+    :param barostat_parameters:
+        The parameters forwarded to initialize the optional OpenMM barostat.
+        Defaults to None.
+    :type barostat_parameters: Optional[dict[str, Any]]
     :param brush_density:
         The polymer surface density in the Alexander-de Gennes polymer brush model [i.e., sigma in eq. (1)].
         The unit of the brush_density must be compatible with 1/nanometer^2 and the value must be greater than zero.
@@ -324,6 +352,8 @@ class RunParameters(Parameters):
                 "randomNumberSeed": None
             }
         })
+    barostat: Optional[str] = None
+    barostat_parameters: Optional[dict[str, Any]] = None
     brush_density: unit.Quantity = field(default_factory=lambda: 0.09 / (length_unit ** 2))
     brush_length: unit.Quantity = field(default_factory=lambda: 10.6 * length_unit)
     debye_length: unit.Quantity = field(default_factory=lambda: 5.726968 * length_unit)
@@ -376,6 +406,7 @@ class RunParameters(Parameters):
             raise ValueError("At least one integrator must be specified.")
         for integrator_name, integrator_parameters in self.integrators.items():
             _validate_integrator_parameters(integrator_name, integrator_parameters)
+        _validate_barostat_parameters(self.barostat, self.barostat_parameters)
         if not self.potential_temperature.unit.is_compatible(temperature_unit):
             raise TypeError("The temperature must have a unit compatible with kelvin.")
         if self.potential_temperature <= 0.0 * temperature_unit:
