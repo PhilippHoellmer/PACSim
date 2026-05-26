@@ -286,7 +286,6 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         for cv, restraint_parameters in parameters.umbrella_sampling_parameters.items():
             cv_type = restraint_parameters["cv_type"]
             cv_class = getattr(collective_variables, cv_type)
-            #cv_force =  getattr(collective_variables, cv_parameters["cv_type"])
             cv_parameters = restraint_parameters.get("cv_parameters", {})
             restraint_parameters.pop("cv_type")
             restraint_parameters.pop("cv_parameters")
