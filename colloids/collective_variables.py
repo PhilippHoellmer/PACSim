@@ -232,3 +232,18 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
         x_force.addCollectiveVariable("all_highcoord", all_highcoord)
         
         return x_force
+    
+class XPositionCV(CollectiveVariableAbstract):
+    """Simple scalar CV for tests: x position of one particle."""
+
+    def __init__(self, topology: openmm.app.Topology, system: openmm.System, particle_index: int = 0):
+        self._particle_index = particle_index
+
+    def compute_cv(self) -> openmm.Force:
+        force = openmm.CustomExternalForce("x")
+        force.setName("x_position_cv")
+        force.addParticle(self._particle_index, [])
+        return force
+
+    def get_force(self) -> openmm.Force:
+        return self.compute_cv()
