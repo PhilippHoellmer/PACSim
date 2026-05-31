@@ -8,7 +8,8 @@ import numpy as np
 import openmm
 from openmm import app
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
-                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential)
+                      ImplicitSubstrateWall, DepletionPotential, Gravity, MagneticField, PlumedPotential)
+from colloids.magnetic_field import MagneticFieldTimeUpdateReporter
 from colloids.gsd_reporter import GSDReporter
 from colloids.helper_functions import get_cell_from_box, read_gsd_file, write_gsd_file
 import colloids.integrators as integrators
@@ -201,6 +202,29 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
     else:
         gravitational_potential = None
 
+    if parameters.magnetic_field is not None:
+        magnetic_field_type = parameters.magnetic_field["type"]
+        if isinstance(magnetic_field_type, str):
+            magnetic_field_type = magnetic_field_type.upper()
+        if magnetic_field_type in [None, "NONE"]:
+            magnetic_field = None
+        else:
+            magnetic_field = MagneticField(field_type=magnetic_field_type,
+                                           amplitude_x=parameters.magnetic_field["amplitude_x"],
+                                           amplitude_y=parameters.magnetic_field["amplitude_y"],
+                                           typeids=parameters.magnetic_field["typeids"],
+                                           frequency_x=parameters.magnetic_field.get("frequency_x"),
+                                           frequency_y=parameters.magnetic_field.get("frequency_y"),
+                                           phase_x=parameters.magnetic_field.get("phase_x"),
+                                           phase_y=parameters.magnetic_field.get("phase_y"),
+                                           use_pbc=parameters.use_pbc,
+                                           box_lengths=(frame.configuration.box[0] * length_unit,
+                                                        frame.configuration.box[1] * length_unit))
+            magnetic_field_time_reporter = MagneticFieldTimeUpdateReporter()
+    else:
+        magnetic_field = None
+        magnetic_field_time_reporter = None
+
     if parameters.use_implicit_substrate:
         substrate_wall = ImplicitSubstrateWall(colloid_potentials_parameters=potentials_parameters,
                                                wall_distance_z=wall_distances[2],
@@ -235,6 +259,8 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             depletion_potential.add_particle(radius=radii[i], substrate_flag=is_substrate)
         if parameters.use_gravity and not is_substrate:
             gravitational_potential.add_particle(index=i, radius=radii[i])
+        if magnetic_field is not None:
+            magnetic_field.add_particle(index=i, typeid=frame.particles.typeid[i])
         if parameters.use_implicit_substrate:
             assert not is_substrate
             substrate_wall.add_particle(index=i, radius=radii[i], surface_potential=surface_potentials[i])
@@ -266,6 +292,11 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
+    if magnetic_field is not None:
+        for force in magnetic_field.yield_potentials():
+            force.setForceGroup(system.getNumForces())
+            system.addForce(force)
+
     if parameters.use_implicit_substrate:
         for force in substrate_wall.yield_potentials():
             force.setForceGroup(system.getNumForces())
@@ -288,6 +319,12 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
 
 def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, append_file: bool,
                      total_number_steps: int, initial_frame: gsd.hoomd.Frame) -> None:
+    if parameters.magnetic_field is not None:
+        magnetic_field_type = parameters.magnetic_field["type"]
+        if isinstance(magnetic_field_type, str):
+            magnetic_field_type = magnetic_field_type.upper()
+        if magnetic_field_type == "AC":
+            simulation.reporters.append(MagneticFieldTimeUpdateReporter())
     simulation.reporters.append(GSDReporter(parameters.trajectory_filename, parameters.trajectory_interval,
                                             initial_frame.particles.diameter / 2.0 * length_unit,
                                             initial_frame.particles.charge * electric_potential_unit, simulation,
