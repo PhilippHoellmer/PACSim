@@ -1,7 +1,10 @@
 import math
 from numbers import Integral
-from typing import Iterator, Sequence
+from typing import Iterator, Optional, Sequence
+
+import openmm.app
 from openmm import CustomExternalForce, unit
+
 from colloids.abstracts import OpenMMPotentialAbstract
 from colloids.units import energy_unit, length_unit, time_unit
 
@@ -20,7 +23,8 @@ class MagneticField(OpenMMPotentialAbstract):
 
     def __init__(self, field_type: str, amplitude_x: unit.Quantity, amplitude_y: unit.Quantity,
                  typeids: Sequence[int], frequency_x: unit.Quantity = None,
-                 frequency_y: unit.Quantity = None, phase_x: float = None, phase_y: float = None) -> None:
+                 frequency_y: unit.Quantity = None, phase_x: float = None, phase_y: float = None,
+                 use_pbc: bool = True, box_lengths: Optional[Sequence[unit.Quantity]] = None) -> None:
         super().__init__()
 
         if not isinstance(field_type, str):
@@ -66,16 +70,28 @@ class MagneticField(OpenMMPotentialAbstract):
         self._frequency_y = frequency_y
         self._phase_x = phase_x
         self._phase_y = phase_y
+        self._use_pbc = use_pbc
+        self._box_lengths = box_lengths
         self._magnetic_field = self._set_up_magnetic_field_potential()
 
     def _set_up_magnetic_field_potential(self) -> CustomExternalForce:
+        x_coordinate = "periodicdistance(x, 0, 0, 0, 0, 0)" if self._use_pbc else "x"
+        y_coordinate = "periodicdistance(0, y, 0, 0, 0, 0)" if self._use_pbc else "y"
         if self._field_type == "DC":
-            magnetic_field_string = "type_mask * (magnetic_field_amplitude_x * x + magnetic_field_amplitude_y * y)"
+            magnetic_field_string = (
+                "type_mask * ("
+                f"magnetic_field_amplitude_x * {x_coordinate} + magnetic_field_amplitude_y * {y_coordinate}"
+                ")"
+            )
         else:
             magnetic_field_string = (
                 "type_mask * ("
-                "magnetic_field_amplitude_x * cos(two_pi * magnetic_field_frequency_x * time + magnetic_field_phase_x) * x"
-                " + magnetic_field_amplitude_y * cos(two_pi * magnetic_field_frequency_y * time + magnetic_field_phase_y) * y"
+                "magnetic_field_amplitude_x * cos(two_pi * magnetic_field_frequency_x * magnetic_field_time + "
+                "magnetic_field_phase_x) * "
+                f"{x_coordinate}"
+                " + magnetic_field_amplitude_y * cos(two_pi * magnetic_field_frequency_y * magnetic_field_time + "
+                "magnetic_field_phase_y) * "
+                f"{y_coordinate}"
                 ")"
             )
 
@@ -85,6 +101,7 @@ class MagneticField(OpenMMPotentialAbstract):
         magnetic_field.addGlobalParameter("magnetic_field_amplitude_y",
                                           self._amplitude_y.value_in_unit(self._force_unit))
         magnetic_field.addGlobalParameter("two_pi", 2.0 * math.pi)
+        magnetic_field.addGlobalParameter("magnetic_field_time", 0.0)
         magnetic_field.addPerParticleParameter("type_mask")
         if self._field_type == "AC":
             magnetic_field.addGlobalParameter("magnetic_field_frequency_x",
@@ -107,3 +124,21 @@ class MagneticField(OpenMMPotentialAbstract):
         super().yield_potentials()
         self._magnetic_field.setName(self._name)
         yield self._magnetic_field
+
+
+class MagneticFieldTimeUpdateReporter(object):
+    """
+    Reporter that keeps the magnetic-field time parameter aligned with the OpenMM simulation time.
+    """
+
+    def __init__(self, update_interval: int = 1) -> None:
+        if not update_interval > 0:
+            raise ValueError("The update interval must be greater than zero.")
+        self._update_interval = update_interval
+
+    def describeNextReport(self, simulation: openmm.app.Simulation) -> tuple[int, bool, bool, bool, bool, bool]:
+        steps = self._update_interval - simulation.currentStep % self._update_interval
+        return steps, False, False, False, False, False
+
+    def report(self, simulation: openmm.app.Simulation, state: openmm.State) -> None:
+        simulation.context.setParameter("magnetic_field_time", state.getTime().value_in_unit(time_unit))
