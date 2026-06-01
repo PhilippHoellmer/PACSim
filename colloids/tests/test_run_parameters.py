@@ -102,7 +102,7 @@ class TestRunParameters(object):
         assert parameters.use_plumed == yaml_parameters.use_plumed
         assert parameters.plumed_script == yaml_parameters.plumed_script
         assert parameters.add_restraint == yaml_parameters.add_restraint
-        assert parameters.umbrella_sampling_parameters == yaml_parameters.umbrella_sampling_parameters
+        assert parameters.restraint_parameters == yaml_parameters.restraint_parameters
 
 
 if __name__ == '__main__':

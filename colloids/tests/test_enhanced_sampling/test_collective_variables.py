@@ -191,7 +191,7 @@ class TestCollectiveVariables(object):
 
     @pytest.mark.filterwarnings(
     "ignore:The initial velocities in the GSD file are ignored because a velocity seed is provided.*:UserWarning")
-    @pytest.mark.parametrize("yaml_file", ["run_highcoordcomp.yaml"])
+    @pytest.mark.parametrize("yaml_file", ["run_highcoordcomp_umbrella.yaml"])
     def test_highcoord_comp_cv(self, yaml_file):
         colloids_run([yaml_file])
 

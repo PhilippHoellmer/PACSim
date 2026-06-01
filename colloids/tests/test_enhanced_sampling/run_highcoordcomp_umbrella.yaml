@@ -1,0 +1,93 @@
+alpha: 1.0
+brush_density: !Quantity
+  unit: /(nanometer**2)
+  value: 0.09
+brush_length: !Quantity
+  unit: nanometer
+  value: 10.0
+checkpoint_filename: checkpoint.chk
+checkpoint_interval: 500
+cutoff_factor: 21.0
+debye_length: !Quantity
+  unit: nanometer
+  value: 5.3
+depletant_radius: null
+depletion_phi: null
+dielectric_constant: 80.0
+electrostatic_radius_average: harmonic
+epsilon: !Quantity
+    unit: kilojoule/mole
+    value: 2.477709860209665  # 1 k_B T
+final_configuration_gsd_filename: final_frame.gsd
+gravitational_acceleration: !Quantity
+    unit: meter/(second**2)
+    value: 9.8
+initial_configuration: first_frame.gsd
+integrator: LangevinIntegrator
+integrator_parameters:
+  frictionCoeff: !Quantity
+    unit: /picosecond
+    value: 0.001574074286750681
+  randomNumberSeed: 3
+  stepSize: !Quantity
+    unit: picosecond
+    value: 0.00317647015905543
+  temperature: !Copy
+    key: potential_temperature
+minimize_energy_initially: false
+particle_density: !Quantity
+  unit: gram/(centimeter**3)
+  value: 1.05
+platform_name: Reference
+plumed_script: null
+potential_temperature: !Quantity
+  unit: kelvin
+  value: 298.0
+run_steps: 100
+state_data_filename: state_data.csv
+state_data_interval: 10
+steric_radius_average: harmonic
+trajectory_filename: trajectory.gsd
+trajectory_interval: 10
+update_reporter: null
+update_reporter_parameters: null
+use_depletion: false
+use_implicit_substrate: false
+substrate_wall_charge: null
+use_gravity: true
+use_log: false
+use_plumed: false
+add_restraint: true
+restraint_parameters:
+  restraint_type: umbrella 
+  bias_variables:
+    cv1:
+      cv_type: HighCoordCompositionCV
+      cv_parameters:
+        target_particle_type: "2"
+        ignore_types: null
+        coordination_d0: !Quantity
+          value: 300.0
+          unit: nanometer
+        coordination_r0: !Quantity
+          value: 50.0
+          unit: nanometer
+        coordination_dmax: !Quantity
+          value: 400.0
+          unit: nanometer
+        highcoord_threshold: 12.0
+      restraint_name: xP_rest
+      force_constant: !Quantity
+        value: 10000.0
+        unit: kilojoule/mole
+      center: 0.515
+      filename: colvars_xP.csv
+      print_interval: 10
+velocity_seed: 2
+wall_directions:
+  - true
+  - true
+  - true
+water_density: !Quantity
+  unit: gram/(centimeter**3)
+  value: 0.998
