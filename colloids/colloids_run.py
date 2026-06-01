@@ -1,12 +1,15 @@
 import argparse
 import inspect
 import sys
+import os
+import glob
 from typing import Optional, Sequence
 import warnings
 import gsd.hoomd
 import numpy as np
 import openmm
 from openmm import app
+from openmm.app.metadynamics import BiasVariable, Metadynamics
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
                       ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential, UmbrellaSamplingPotential)
 from colloids.gsd_reporter import GSDReporter
@@ -279,37 +282,86 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
             force.setForceGroup(system.getNumForces())
             system.addForce(force)
 
+    umbrella_forces = []
+    metad = None
     if parameters.add_restraint:
 
-        restraints = []
+        add_umbrella = False
+        add_metadynamics = False
+        if parameters.restraint_parameters["restraint_type"] == "umbrella":
+            add_umbrella = True
+        elif parameters.restraint_parameters["restraint_type"] == "metadynamics":
+            add_metadynamics = True
 
-        for cv, restraint_parameters in parameters.umbrella_sampling_parameters.items():
-            cv_type = restraint_parameters["cv_type"]
-            cv_class = getattr(collective_variables, cv_type)
-            #cv_force =  getattr(collective_variables, cv_parameters["cv_type"])
-            cv_parameters = restraint_parameters.get("cv_parameters", {})
-            restraint_parameters.pop("cv_type")
-            restraint_parameters.pop("cv_parameters")
-            umbrella_parameters = restraint_parameters
+        if add_umbrella:
+            restraints = []
+            umbrella_forces = []
+            for _, umbrella_parameters in parameters.restraint_parameters["bias_variables"].items():
+                cv_type = umbrella_parameters["cv_type"]
+                cv_class = getattr(collective_variables, cv_type)
+                cv_parameters = umbrella_parameters.get("cv_parameters", {})
+                #cv_parameters.pop("cv_type")
+                #cv_parameters.pop("cv_parameters")
 
-            cv = cv_class(topology=topology, system=system,**cv_parameters)
-            cv_force = cv.get_force()#restraint_parameters)
-
-            restraints.append(UmbrellaSamplingPotential(umbrella_parameters["restraint_name"], cv_force, umbrella_parameters["center"], umbrella_parameters["force_constant"]))
-    else:
-        restraints = None
+                cv = cv_class(topology=topology, system=system,**cv_parameters)
+                cv_force = cv.get_force()#restraint_parameters)
+                
+                #umbrella_parameters = parameters.restraint_parameters["bias_variables"]
+                restraints.append(UmbrellaSamplingPotential(umbrella_parameters["restraint_name"], cv_force, umbrella_parameters["center"], umbrella_parameters["force_constant"]))
     
-    
-    restraint_forces = []
-    
-    if restraints is not None:
-        for restraint in restraints:
-            force = restraint.yield_potentials()
-            force_group = system.getNumForces()
-            force.setForceGroup(force_group)
-            system.addForce(force)
+            for restraint in restraints:
+                force = restraint.yield_potentials()
+                force_group = system.getNumForces()
+                force.setForceGroup(force_group)
+                system.addForce(force)
 
-            restraint_forces.append({"force": force, "force_group": force_group})
+                umbrella_forces.append({"force": force, "force_group": force_group})
+        
+        elif add_metadynamics:
+            bias_dir = "biases"
+            existing_bias_files = glob.glob(os.path.join(bias_dir, "bias_*.npy"))
+
+            if existing_bias_files:
+                warnings.warn(
+                    f"Found {len(existing_bias_files)} existing metadynamics bias file(s) "
+                    f"in '{bias_dir}'. OpenMM will load them and continue building on the "
+                    "existing bias. Delete the directory before running to start from scratch."
+                )
+
+            os.makedirs(bias_dir, exist_ok=True)
+
+            cv_forces = []
+            bias_variables = []
+            restraint_parameters = parameters.restraint_parameters
+
+            for i, cv_parameters in parameters.restraint_parameters["bias_variables"].items():
+                cv_type = cv_parameters["cv_type"]
+                cv_class = getattr(collective_variables, cv_type)
+
+                cv = cv_class(topology=topology, system=system,**cv_parameters.get("cv_parameters", {}),)
+
+                cv_force = cv.get_force()
+                cv_forces.append(cv_force)
+
+                bias_variables.append(
+                    BiasVariable(
+                        force=cv_force,
+                        minValue=cv_parameters["min_value"],
+                        maxValue=cv_parameters["max_value"],
+                        biasWidth=cv_parameters["bias_width"]
+                    )
+                )
+
+            metad = Metadynamics(
+                system=system,
+                variables=bias_variables,
+                temperature=restraint_parameters["temperature"],
+                biasFactor=restraint_parameters["bias_factor"],
+                height=restraint_parameters["hill_height"],
+                frequency=restraint_parameters["stride"],
+                saveFrequency=restraint_parameters.get("print_interval"),
+                biasDir="biases",
+            )
 
     # -------------------------------------- Set up the simulation. ----------------------------------------------------
     if parameters.platform_name == "CUDA":
@@ -318,8 +370,9 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
     else:
         simulation = app.Simulation(topology, system, integrator, platform)
         
-    if restraint_forces:
-        simulation.restraint_forces = restraint_forces
+
+    simulation.umbrella_forces = umbrella_forces
+    simulation.metad = metad
 
     return simulation
 
@@ -349,9 +402,9 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
                 f"The expected signature is {inspect.signature(update_reporter)} (the simulation and append_file "
                 f"arguments should not be specified).")
     
-    if parameters.add_restraint:
+    if parameters.add_restraint and parameters.restraint_parameters["restraint_type"] == "umbrella":
 
-        for (cv, cv_parameters), umbrella in zip(parameters.umbrella_sampling_parameters.items(), simulation.restraint_forces):
+        for (cv, cv_parameters), umbrella in zip(parameters.restraint_parameters["bias_variables"].items(), simulation.umbrella_forces):
             simulation.reporters.append(
                 UmbrellaSamplingReporter(
                     filename=cv_parameters["filename"],
@@ -361,7 +414,8 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
                     append_file=append_file,
                     )
                 )
-
+            
+            
     # The CheckpointReporter should always be last to ensure that all other reporters have been executed before it.
     simulation.reporters.append(app.CheckpointReporter(parameters.checkpoint_filename,
                                                        parameters.checkpoint_interval))
@@ -427,7 +481,10 @@ def colloids_run(argv: Sequence[str]) -> app.Simulation:
 
         set_up_reporters(parameters, simulation, False, parameters.run_steps, frame)
 
-    simulation.step(parameters.run_steps)
+    if simulation.metad:
+        simulation.metad.step(simulation, parameters.run_steps)
+    else:
+        simulation.step(parameters.run_steps)
 
     if parameters.final_configuration_gsd_filename is not None:
         write_gsd_file(parameters.final_configuration_gsd_filename, simulation,

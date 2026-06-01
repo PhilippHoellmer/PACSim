@@ -6,46 +6,54 @@ from abc import abstractmethod, ABC
 
 import openmm
 import openmm.app
-from openmm import CustomCVForce
+from openmm import unit, CustomCVForce
 
-from colloids.abstracts import OpenMMPotentialAbstract
-from colloids.helper_functions import get_cell_from_box
 from colloids.units import energy_unit
 
 
 class UmbrellaSamplingPotential:
     """
     Abstract class for harmonic restraint force used in umbrella sampling simulations.
+
+    :param name:
+        The name of the OpenMM force object.
+    :type name: str
+    :param cv_force:
+        The custom collective variable force in terms of which the restraint is being defined.
+        This must be one of the implemented collective variable abstract classes (validated at
+        simulation runtime).
+    :type cv_force: openmm.CustomCVForce
+    :param center:
+        The center for the harmonic restraint.
+    :type center: float
+    :param force_constant:
+        The force constant for the harmonic restraint.
+    :type force_constant: unit.Quantity
+
+    :raises TypeError:
+        If the force constant is not compatible with energy units.
     """
 
-    def __init__(self, name, cv_force, center, force_constant) -> None:
-        #super().__init__()
+    def __init__(self, name: str, cv_force: openmm.CustomCVForce, center: float, force_constant: unit.Quantity) -> None:
+        
+        if not force_constant.unit.is_compatible(energy_unit):
+            raise TypeError("Force constant must have a unit compatible with kilojoules per mole.")
+        
         self._name = name
         self._cv_force = cv_force
         self._center = center
         self._force_constant = force_constant
-
-    '''def add_particle(self) -> None:
-        """
-        Add a particle to the restraint potential.
-
-        This method has to be called for every particle in the system before the method yield_potentials is used.
-        """
-        super().add_particle()'''
-    
+        
     def yield_potentials(self) -> "Iterator[openmm.CustomCVForce]":
 
         """
         Generate the restraint force for an OpenMM system.
 
-        This method has to be called after the method add_particle was called for every particle in the system.
-
         :return:
-            An iterator yielding a restraint force. If using multiple CVs this yields a sum of the restraint forces.
+            An iterator yielding a restraint force. If using multiple CVs, this yields a sum of the restraint forces.
         :rtype: Iterator[openmm.CustomCVForce]
         """
-        #super().yield_potentials()
-        
+
         umbrella_force = CustomCVForce("0.5*force_constant*(cv-center)^2 ;")
         
         umbrella_force.setName(f"umbrella_{self._name}")
@@ -58,10 +66,36 @@ class UmbrellaSamplingPotential:
 
 
 class UmbrellaSamplingReporter(object):
-    """Write umbrella sampling CVs and bias values to a CSV file."""
+    """Reporter for an OpenMM simulation that writes umbrella sampling CVs and bias values to a CSV file.
+    
+    :param filename:
+        The name of the file to write to.
+        The filename must end with the .csv extension.
+    :type filename: str
+    :param umbrellla_force: 
+        The OpenMM umbrella restraint force for which the CV and bias are being output at the
+        specified print interval.
+    :type umbrella_force: openmm.CustomCVForce
+    :param force_group:
+        The force group to which the umbrella restraint force object belongs.
+    :type force_group: int
+    :param print_interval:
+        The interval (in time steps) at which to write out CV and bias values to the csv file.
+        The value must be greater than zero.
+    :type print_interval: int
+    :param append_file:
+        If True, open an existing csv file to append to. If False, try to create a new file, and throw an error if the
+        file already exists.
+        Defaults to False.
+    :type append_file: bool
+
+    :raises ValueError:
+        If the filename does not end with the .csv extension.
+        If the print_interval is not greater than zero.
+    """
 
     def __init__(self, filename: str, umbrella_force: openmm.CustomCVForce, force_group: int,
-                print_interval: int = 1, append_file: bool = False) -> None:
+                print_interval: int, append_file: bool = False) -> None:
         """Constructor of the UmbrellaSamplingReporter class."""
         if not filename.endswith(".csv"):
             raise ValueError("The file must have the .csv extension.")
@@ -113,7 +147,7 @@ class UmbrellaSamplingReporter(object):
             The OpenMM simulation.
         :type simulation: openmm.app.Simulation
         :param cv_value:
-            The value of the cv.
+            The value of the CV.
         :type cv_value: float
         :param bias_value: 
             The value of the restraint bias (dimensionless, but units correspond to the energy units
