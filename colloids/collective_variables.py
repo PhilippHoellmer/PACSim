@@ -1,4 +1,4 @@
-from typing import Optional, Sequence, Callable
+from typing import Optional, Sequence
 from abc import abstractmethod, ABC
 from dataclasses import dataclass
 
@@ -10,6 +10,10 @@ from colloids.helper_functions import get_cell_from_box
 from colloids.units import length_unit
 
 from openmm import CustomGBForce, CustomCVForce
+from openmmtorch import TorchForce
+
+import torch
+from .rsh import rsh_cart_6
 
 
 _EPSILON = 1e-12
@@ -42,8 +46,13 @@ class SwitchingFunctions:
 
         return mt
     
+    @staticmethod
+    def get_gaussian_switch_torch(r, r0: float, d0: float):
+        x = torch.square(r-d0)/(2*r0**2)
+        return torch.exp(-x)
+    
 
-class CollectiveVariableAbstract(ABC):
+class OpenMMCollectiveVariableAbstract(ABC):
     """
     Abstract class for the implementation of custom collective variable forces in OpenMM.
     
@@ -57,21 +66,27 @@ class CollectiveVariableAbstract(ABC):
     """
 
     def __init__(self, topology=openmm.app.Topology, system=openmm.System):
-        pass
+        self.topology = topology
+        self.system = system
+        self._add_force_called = False
     
     @abstractmethod
     def compute_cv(self) -> openmm.Force:
-        raise NotImplementedError
+        if self._add_force_called:
+            raise RuntimeError("method compute_cv must be called before a CV-associated " 
+                               "force is used")
+        self._compute_cv_called = True
 
     @abstractmethod
     def get_force(self) -> openmm.CustomCVForce:
-        raise NotImplementedError
+        #raise NotImplementedError
+        self._add_force_called = True
     
-class HighCoordCompositionCV(CollectiveVariableAbstract):
+class HighCoordCompositionCV(OpenMMCollectiveVariableAbstract):
     
     """
-    Custom collective variable to determine particles of high coordination and compute the number ratio of a specified 
-    target particle type among these coordinated particles. A switching function is applied to make the CV smooth and 
+    Custom collective variable defined in OpenMM to determine particles of high coordination and compute the number ratio of a 
+    specified target particle type among these coordinated particles. A switching function is applied to make the CV smooth and 
     differentiable.
 
     :param topology:
@@ -115,7 +130,6 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
     def __init__(self, topology: openmm.app.Topology, system: openmm.System, target_particle_type: str, coordination_d0: unit.Quantity, 
                 coordination_r0: unit.Quantity, coordination_dmax: unit.Quantity, highcoord_threshold: float, 
                 ignore_types: Optional[Sequence[str]] = None):
-        
         self._uses_pbc = system.usesPeriodicBoundaryConditions()
         self._particle_types = [atom.name for atom in topology.atoms()]
         if target_particle_type not in self._particle_types:
@@ -233,11 +247,11 @@ class HighCoordCompositionCV(CollectiveVariableAbstract):
         
         return x_force
     
-class XPositionCV(CollectiveVariableAbstract):
+class XPositionCV(OpenMMCollectiveVariableAbstract):
     """Simple scalar CV for tests: x position of one particle."""
 
-    def __init__(self, topology: openmm.app.Topology, system: openmm.System, particle_index: int = 0):
-        self._particle_index = particle_index
+    def __init__(self, topology=None, system=None, particle_index: int = 0):
+        super().__init__(topology=topology, system=system)
 
     def compute_cv(self) -> openmm.Force:
         force = openmm.CustomExternalForce("x")
@@ -247,3 +261,83 @@ class XPositionCV(CollectiveVariableAbstract):
 
     def get_force(self) -> openmm.Force:
         return self.compute_cv()
+
+
+class SteinhardtOrderModule(torch.nn.Module):
+    def __init__(self, num_nbs, order, r0, d0):
+        super().__init__()
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        self._num_nbs = num_nbs
+        self._order = order
+        self._r0 = r0
+        self._d0 = d0
+
+    def calc_stein_single(self, i: int, pos, device: torch.device):
+        disps = pos - pos[i]
+        dists = torch.square(disps)
+        dists = torch.sum(dists, dim=(1))
+        dists = torch.sqrt(dists)
+        
+        inds_nbs = torch.argsort(dists)[1:self._num_nbs+1]
+        disps = pos[inds_nbs] - pos[i]
+        dists = torch.sqrt(torch.sum(torch.square(disps), dim=(1)))
+        dists = torch.clamp(dists, min=1e-8)
+        disps_nbs = disps.T/dists
+        disps_nbs = disps_nbs.T
+        
+        Y_nm_real = rsh_cart_6(disps_nbs, device)
+
+        sigma = SwitchingFunctions.get_gaussian_switch_torch(dists, self._r0, self._d0)
+        sigma_sum = torch.sum(sigma)
+        sigma_sum = torch.clamp(torch.sum(sigma), min=1e-12)
+        q_nm_real = torch.sum(sigma[:,None]*Y_nm_real[:,self._order*(self._order+1)-self._order:self._order*(self._order+1)+self._order+1], dim=(0))/sigma_sum
+    
+        return q_nm_real
+
+    def calc_stein(self, pos, device: torch.device):
+        natoms = len(pos)
+
+        q_nm_i = self.calc_stein_single(0, pos, device)
+        q_n = torch.sqrt(torch.sum(q_nm_i*q_nm_i))
+        for i in range(1, natoms):
+            q_nm_i = self.calc_stein_single(i, pos, device)
+            q_n_i = torch.sqrt(torch.sum(q_nm_i*q_nm_i))
+            q_n = q_n + q_n_i
+        return q_n/natoms
+
+    
+    def forward(self, positions):
+        positions = positions.float()
+        q_n = self.calc_stein(positions, self.device)
+        return q_n
+    
+
+class SteinhardtOrderCV(OpenMMCollectiveVariableAbstract):
+    def __init__(self, num_nbs, order, r0, d0, system, topology=None):
+        super().__init__(topology=topology, system=system)
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        self._num_nbs = num_nbs
+        self._order = order
+        self._r0 = r0
+        self._d0 = d0
+
+        self._uses_pbc = system.usesPeriodicBoundaryConditions()
+    
+    def compute_cv(self) -> openmm.Force:
+        cvmodule = torch.jit.script(SteinhardtOrderModule(self._num_nbs, self._order, self._r0, self._d0))
+        cv = TorchForce(cvmodule)
+        cv.setUsesPeriodicBoundaryConditions(self._uses_pbc)
+        cv_force = openmm.CustomCVForce('cv')
+        cv_force.addCollectiveVariable('cv', cv)
+
+        return cv_force
+
+    def get_force(self) -> openmm.Force:
+        return self.compute_cv()
+         

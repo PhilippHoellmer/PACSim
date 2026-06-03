@@ -165,3 +165,101 @@ class UmbrellaSamplingReporter(object):
         except AttributeError:
             # If another error occurred, the '_file' attribute might not exist.
             pass
+
+class MetadynamicsReporter(object):
+    """Reporter for an OpenMM simulation that writes metadynamics CVs and bias values to a CSV file.
+    
+    :param filename:
+        The name of the file to write to.
+        The filename must end with the .csv extension.
+    :type filename: str
+    :param metad_object: 
+        The OpenMM metadynamics objects for which the CVs and biases are being output at the
+        specified print interval.
+    :type metad_object: openmm.app.metadynamics.Metadynamics
+    :param print_interval:
+        The interval (in time steps) at which to write out CV and bias values to the csv file.
+        The value must be greater than zero.
+    :type print_interval: int
+    :param append_file:
+        If True, open an existing csv file to append to. If False, try to create a new file, and throw an error if the
+        file already exists.
+        Defaults to False.
+    :type append_file: bool
+
+    :raises ValueError:
+        If the filename does not end with the .csv extension.
+        If the print_interval is not greater than zero.
+    """
+
+    def __init__(self, filename: str, metad_object: openmm.app.metadynamics.Metadynamics,
+                print_interval: int, append_file: bool = False) -> None:
+        """Constructor of the MetadynamicsReporter class."""
+        if not filename.endswith(".csv"):
+            raise ValueError("The file must have the .csv extension.")
+        if not print_interval > 0:
+            raise ValueError("The print frequency must be greater than zero.")
+        self._metad = metad_object
+        self._print_interval = print_interval
+        self._file = open(filename, "a" if append_file else "w")
+        if not append_file:
+            print("timestep,cv,bias", file=self._file, flush=True)
+    
+    # noinspection PyPep8Naming
+    def describeNextReport(self, simulation: openmm.app.Simulation) -> tuple[int, bool, bool, bool, bool, bool]:
+        """Get information about the next report this reporter will generate.
+
+        This method is called by OpenMM once this reporter is added to the list of reporters of a simulation.
+
+        :param simulation:
+            The simulation to generate a report for.
+        :type simulation: openmm.app.Simulation
+
+        :returns:
+            (Number of steps until next report,
+            Whether the next report requires positions (False),
+            Whether the next report requires velocities (False),
+            Whether the next report requires forces (False),
+            Whether the next report requires energies (False),
+            Whether positions should be wrapped to lie in a single periodic box (False))
+        :rtype: tuple[int, bool, bool, bool, bool, bool]
+        """
+        steps = self._print_interval - simulation.currentStep % self._print_interval
+        return steps, False, False, False, False, False
+
+    def report(self, simulation: openmm.app.Simulation, state: openmm.State) -> None:
+        
+        cv_val = self._metad.getCollectiveVariables(simulation)[0]
+        
+        force_group = self._metad._force.getForceGroup()
+        bias_state = simulation.context.getState(getEnergy=True,groups={force_group})
+        bias_energy = bias_state.getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole)
+        
+        self.print(simulation, cv_val, bias_energy)
+    
+    def print(self, simulation: openmm.app.Simulation, cv_value: float, bias_value: float) -> None:
+        """
+        Print the CV and bias values in the output csv file.
+
+        :param simulation:
+            The OpenMM simulation.
+        :type simulation: openmm.app.Simulation
+        :param cv_value:
+            The value of the CV.
+        :type cv_value: float
+        :param bias_value: 
+            The value of the restraint bias (dimensionless, but units correspond to the energy units
+            in the simulation).
+        :type bias_value: float
+        """
+        step = simulation.currentStep
+        if step % self._print_interval == 0:
+            print(f"{step},{cv_value},{bias_value}", file=self._file, flush=True)
+
+    def __del__(self) -> None:
+        """Destructor of the MetadynamicsReporter class."""
+        try:
+            self._file.close()
+        except AttributeError:
+            # If another error occurred, the '_file' attribute might not exist.
+            pass
