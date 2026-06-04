@@ -75,8 +75,8 @@ class MagneticField(OpenMMPotentialAbstract):
         self._magnetic_field = self._set_up_magnetic_field_potential()
 
     def _set_up_magnetic_field_potential(self) -> CustomExternalForce:
-        x_coordinate = "periodicdistance(x, 0, 0, 0, 0, 0)" if self._use_pbc else "x"
-        y_coordinate = "periodicdistance(0, y, 0, 0, 0, 0)" if self._use_pbc else "y"
+        x_coordinate = "x"
+        y_coordinate = "y"
         if self._field_type == "DC":
             magnetic_field_string = (
                 "type_mask * ("
