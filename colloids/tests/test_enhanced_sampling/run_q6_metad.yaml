@@ -10,7 +10,7 @@ checkpoint_interval: 500
 cutoff_factor: 21.0
 debye_length: !Quantity
   unit: nanometer
-  value: 5.3
+  value: 5.42
 depletant_radius: null
 depletion_phi: null
 dielectric_constant: 80.0
@@ -22,7 +22,7 @@ final_configuration_gsd_filename: final_frame.gsd
 gravitational_acceleration: !Quantity
     unit: meter/(second**2)
     value: 9.8
-initial_configuration: first_frame.gsd
+initial_configuration: firstframe_N256_R105,85_charges30,70.gsd
 integrator: LangevinIntegrator
 integrator_parameters:
   frictionCoeff: !Quantity
@@ -48,7 +48,7 @@ state_data_filename: state_data.csv
 state_data_interval: 10
 steric_radius_average: harmonic
 trajectory_filename: trajectory.gsd
-trajectory_interval: 10
+trajectory_interval: 1
 update_reporter: null
 update_reporter_parameters: null
 use_depletion: false
@@ -62,31 +62,24 @@ restraint_parameters:
   restraint_type: metadynamics
   bias_variables:
     cv1:
-      cv_type: HighCoordCompositionCV
+      cv_type: SteinhardtOrderCV
       cv_parameters:
-        target_particle_type: "2"
-        ignore_types: null
-        coordination_d0: !Quantity
-          value: 300.0
-          unit: nanometer
-        coordination_r0: !Quantity
-          value: 50.0
-          unit: nanometer
-        coordination_dmax: !Quantity
-          value: 400.0
-          unit: nanometer
-        highcoord_threshold: 12.0
+         num_nbs: 16
+         order: 6
+         r0: 50.0
+         d0: 200.0
       min_value: 0.0
       max_value: 1.0
-      bias_width: 0.02
+      bias_width: 0.05
   temperature: !Copy
     key: potential_temperature
-  bias_factor: 10.0
+  bias_factor: 10
   hill_height: !Quantity
-    value: 1.0
+    value: 0.1
     unit: kilojoule/mole
   stride: 10
-  print_interval: 10
+  filename: q6_metad.csv
+  print_interval: 10 
 velocity_seed: 2
 wall_directions:
   - true

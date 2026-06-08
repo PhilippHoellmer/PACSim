@@ -19,7 +19,7 @@ import colloids.collective_variables as collective_variables
 from colloids.run_parameters import RunParameters
 from colloids.status_reporter import StatusReporter
 import colloids.update_reporters as update_reporters
-from colloids.umbrella_sampling import UmbrellaSamplingReporter
+from colloids.enhanced_sampling import UmbrellaSamplingReporter, MetadynamicsReporter
 from colloids.units import electric_potential_unit, length_unit
 
 
@@ -402,19 +402,29 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
                 f"The expected signature is {inspect.signature(update_reporter)} (the simulation and append_file "
                 f"arguments should not be specified).")
     
-    if parameters.add_restraint and parameters.restraint_parameters["restraint_type"] == "umbrella":
+    if parameters.add_restraint:
+        if parameters.restraint_parameters["restraint_type"] == "umbrella":
 
-        for (cv, cv_parameters), umbrella in zip(parameters.restraint_parameters["bias_variables"].items(), simulation.umbrella_forces):
+            for (cv, cv_parameters), umbrella in zip(parameters.restraint_parameters["bias_variables"].items(), simulation.umbrella_forces):
+                simulation.reporters.append(
+                    UmbrellaSamplingReporter(
+                        filename=cv_parameters["filename"],
+                        umbrella_force=umbrella["force"],
+                        force_group=umbrella["force_group"],
+                        print_interval=cv_parameters["print_interval"],
+                        append_file=append_file,
+                        )
+                )
+        elif parameters.restraint_parameters["restraint_type"] == "metadynamics":
+        
             simulation.reporters.append(
-                UmbrellaSamplingReporter(
-                    filename=cv_parameters["filename"],
-                    umbrella_force=umbrella["force"],
-                    force_group=umbrella["force_group"],
-                    print_interval=cv_parameters["print_interval"],
+                MetadynamicsReporter(
+                    filename=parameters.restraint_parameters["filename"],
+                    metad_object=simulation.metad,
+                    print_interval=parameters.restraint_parameters["print_interval"],
                     append_file=append_file,
                     )
-                )
-            
+            )
             
     # The CheckpointReporter should always be last to ensure that all other reporters have been executed before it.
     simulation.reporters.append(app.CheckpointReporter(parameters.checkpoint_filename,

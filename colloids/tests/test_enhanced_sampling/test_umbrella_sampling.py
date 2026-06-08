@@ -9,7 +9,7 @@ import gsd.hoomd as gsd
 
 from colloids.colloids_run import colloids_run
 
-from colloids.umbrella_sampling import UmbrellaSamplingPotential
+from colloids.enhanced_sampling import UmbrellaSamplingPotential
 from colloids.units import energy_unit
 
 
