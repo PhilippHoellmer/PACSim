@@ -31,4 +31,4 @@ pacsim-analyze = "colloids.colloids_analyze.colloids_analyze:main"
 pacsim-tune = "colloids.colloids_tune.colloids_tune:main"
 
 [tool.setuptools.packages.find]
-exclude = ["Literature", "jupyter-scripts"]
+where = ["."]
