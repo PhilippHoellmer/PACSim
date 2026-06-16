@@ -4,6 +4,7 @@ import warnings
 import gsd.hoomd
 import numpy as np
 from openmm import unit
+from colloids import __version__
 from colloids.colloids_create.configuration_parameters import ConfigurationParameters
 import colloids.colloids_create.configuration_generators as configuration_generators
 import colloids.colloids_create.final_modifiers as final_modifiers
@@ -95,8 +96,11 @@ def check_frame_types(frame: gsd.hoomd.Frame, masses: dict[str, unit.Quantity], 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create an initial configuration for an OpenMM simulation of a "
-                                                 "colloids system.")
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=f"""
+PACSim Version {__version__}: A Flexible Simulation Framework for Polymer-Attenuated Coulombic Self-Assembly.
+
+Create an initial colloidal configuration.
+""")
     parser.add_argument("configuration_parameters", help="YAML file with configuration parameters",
                         type=str)
     parser.add_argument("save_file", help="file for the generated gsd to be saved under", type=str)

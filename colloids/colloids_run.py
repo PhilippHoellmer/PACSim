@@ -8,7 +8,7 @@ import numpy as np
 import openmm
 from openmm import app
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
-                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential)
+                      ImplicitSubstrateWall, DepletionPotential, Gravity, PlumedPotential, __version__)
 from colloids.gsd_reporter import GSDReporter
 from colloids.helper_functions import get_cell_from_box, read_gsd_file, write_gsd_file
 import colloids.integrators as integrators
@@ -317,8 +317,12 @@ def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, appe
 
 
 def colloids_run(argv: Sequence[str]) -> app.Simulation:
-    parser = argparse.ArgumentParser(description="Run OpenMM for a colloids system.")
-    parser.add_argument("yaml_file", help="YAML file with simulation parameters", type=str)
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=f"""
+PACSim Version {__version__}: A Flexible Simulation Framework for Polymer-Attenuated Coulombic Self-Assembly.
+
+Perform a molecular-dynamics simulation using OpenMM.
+""")
+    parser.add_argument("yaml_file", help="YAML file with PACSim parameters", type=str)
     parser.add_argument("-c", "--checkpoint_file", help="OpenMM checkpoint file", type=str,
                         default=None)
     parser.add_argument("--example", help="write an example YAML file and exit", action=ExampleAction)
