@@ -1,0 +1,73 @@
+brush_density: !Quantity
+  unit: /(nanometer**2)
+  value: 0.09
+brush_length: !Quantity
+  unit: nanometer
+  value: 0.001
+checkpoint_filename: checkpoint.chk
+checkpoint_interval: 100000
+cutoff_factor: 21.0
+debye_length: !Quantity
+  unit: nanometer
+  value: 5.42
+dielectric_constant: 80.0
+electrostatic_radius_average: harmonic
+final_configuration_gsd_filename: final_frame.gsd
+gravitational_acceleration: null
+initial_configuration: firstframe_n125.gsd
+integrator: LangevinIntegrator
+integrator_parameters:
+  frictionCoeff: !Quantity
+    unit: /picosecond
+    # value: 0.001574074286750681 # 1 hoomd time unit = 0.6352940318110861 ps so if collision_rate = 0.001 hoomd units, use 0.001/0.6352940318110861
+    value: 0.1
+  randomNumberSeed: 1
+  stepSize: !Quantity
+    unit: picosecond
+    # value: 0.00317647015905543
+    value: 0.05    
+  temperature: !Copy
+    key: potential_temperature
+minimize_energy_initially: false
+particle_density: null
+platform_name: CUDA
+potential_temperature: !Quantity
+  unit: kelvin
+  value: 300.0
+run_steps: 20000
+state_data_filename: state_data.csv
+state_data_interval: 1000
+steric_radius_average: arithmetic
+trajectory_filename: trajectory.gsd
+trajectory_interval: 1000
+update_reporter: RampUpdateReporter
+update_reporter_parameters:
+  filename: phi_ramp_ml.csv
+  parameter_name: ml_depletion_phi
+  start_value: 0.0
+  end_value: 0.45
+  update_interval: 1
+  print_interval: !Copy
+    key: state_data_interval
+  final_update_step: !Copy
+    key: run_steps
+use_depletion: true
+depletant_radius: !Quantity
+  unit: nanometer
+  value: 100.0
+depletion_phi: 0.45
+ml_depletion_model: model.ckpt
+ml_particle_types:
+  "1": 100
+use_gravity: false
+use_log: false
+velocity_seed: 1
+epsilon: !Quantity
+    unit: kilojoule/mole
+    value: 2.477709860209665  # 1 k_B T
+alpha: 1.0    
+wall_directions:
+  - true
+  - true
+  - true
+water_density: null

@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from numbers import Integral
 import inspect
 from typing import Any, Optional
 import warnings
@@ -250,12 +249,6 @@ class RunParameters(Parameters):
         cubed, and the value must be greater than zero.
         Defaults to None.
     :type particle_density: Optional[unit.Quantity]
-    :param magnetic_field:
-        A dictionary describing a magnetic field.
-        If the type entry is None, no magnetic field is used. If it is "DC", the field requires amplitudes in x and
-        y and the particle type ids it acts on. If it is "AC", the field also requires the x and y frequencies and
-        phases.
-    :type magnetic_field: Optional[dict[str, Any]]
     :param update_reporter:
         The name of the update reporter used to vary the value of a force-related global parameter over time
         in a simulation.
@@ -330,7 +323,6 @@ class RunParameters(Parameters):
     gravitational_acceleration: Optional[unit.Quantity] = None
     water_density: Optional[unit.Quantity] = None
     particle_density: Optional[unit.Quantity] = None
-    magnetic_field: Optional[dict[str, Any]] = None
     update_reporter: Optional[str] = None
     update_reporter_parameters: Optional[dict[str, Any]] = None
     use_plumed: bool = False
@@ -478,59 +470,6 @@ class RunParameters(Parameters):
                 raise ValueError("Density of water must not be specified if gravity is not on.")
             if self.particle_density is not None:
                 raise ValueError("Density of particle must not be specified if gravity is not on.")
-        if self.magnetic_field is not None:
-            if not isinstance(self.magnetic_field, dict):
-                raise TypeError("Magnetic field must be specified as a dictionary.")
-            if "type" not in self.magnetic_field:
-                raise ValueError("The magnetic field type must be specified if a magnetic field is provided.")
-            magnetic_field_type = self.magnetic_field["type"]
-            if isinstance(magnetic_field_type, str):
-                magnetic_field_type = magnetic_field_type.upper()
-            if magnetic_field_type in [None, "NONE"]:
-                if any(key != "type" and value is not None for key, value in self.magnetic_field.items()):
-                    raise ValueError("No magnetic-field parameters may be specified if the magnetic field type is None.")
-            elif magnetic_field_type == "DC":
-                required_keys = ["amplitude_x", "amplitude_y", "typeids"]
-                for key in required_keys:
-                    if key not in self.magnetic_field or self.magnetic_field[key] is None:
-                        raise ValueError(f"Magnetic field parameter {key} must be specified if the magnetic field is on.")
-                if self.magnetic_field.get("frequency_x") is not None or self.magnetic_field.get("frequency_y") is not None:
-                    raise ValueError("Magnetic field frequencies must not be specified for a DC magnetic field.")
-                if self.magnetic_field.get("phase_x") is not None or self.magnetic_field.get("phase_y") is not None:
-                    raise ValueError("Magnetic field phases must not be specified for a DC magnetic field.")
-            elif magnetic_field_type == "AC":
-                required_keys = ["amplitude_x", "amplitude_y", "typeids", "frequency_x", "frequency_y",
-                                 "phase_x", "phase_y"]
-                for key in required_keys:
-                    if key not in self.magnetic_field or self.magnetic_field[key] is None:
-                        raise ValueError(f"Magnetic field parameter {key} must be specified if the magnetic field is on.")
-            else:
-                raise ValueError("Magnetic field type must be None, 'DC', or 'AC'.")
-            if magnetic_field_type not in [None, "NONE"]:
-                force_unit = energy_unit / length_unit
-                if not self.magnetic_field["amplitude_x"].unit.is_compatible(force_unit):
-                    raise TypeError("The x amplitude must have a unit compatible with energy per unit length.")
-                if not self.magnetic_field["amplitude_y"].unit.is_compatible(force_unit):
-                    raise TypeError("The y amplitude must have a unit compatible with energy per unit length.")
-                typeids = self.magnetic_field["typeids"]
-                if not isinstance(typeids, (list, tuple)):
-                    raise TypeError("The magnetic field typeids must be given as a list or tuple.")
-                if len(typeids) == 0:
-                    raise ValueError("The magnetic field typeids must contain at least one type id.")
-                for typeid in typeids:
-                    if not isinstance(typeid, Integral):
-                        raise TypeError("The magnetic field typeids must be integers.")
-                    if int(typeid) < 0:
-                        raise ValueError("The magnetic field typeids must be non-negative.")
-                if magnetic_field_type == "AC":
-                    if not self.magnetic_field["frequency_x"].unit.is_compatible(time_unit ** (-1)):
-                        raise TypeError("The x frequency must have a unit compatible with 1/picosecond.")
-                    if not self.magnetic_field["frequency_y"].unit.is_compatible(time_unit ** (-1)):
-                        raise TypeError("The y frequency must have a unit compatible with 1/picosecond.")
-                    if not isinstance(self.magnetic_field["phase_x"], (int, float)):
-                        raise TypeError("The x phase must be a number.")
-                    if not isinstance(self.magnetic_field["phase_y"], (int, float)):
-                        raise TypeError("The y phase must be a number.")
         if self.update_reporter is not None:
             possible_update_reporters = [name for name, _ in inspect.getmembers(update_reporters, inspect.isclass)
                                          if name != "ABC" and "Abstract" not in name]

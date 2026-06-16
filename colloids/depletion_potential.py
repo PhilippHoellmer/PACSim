@@ -14,18 +14,19 @@ try:
     _ML_AVAILABLE = True
 
     class _MLDepletionModule(_nn.Module):
-        def __init__(self, mlp_name: str, ptypes, phi: float, r_d: float, kT: float):
+        def __init__(self, mlp_name: str, ptypes, r_d: float, kT: float):
             super().__init__()
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.mlp = _load_model(mlp_name, derivative=True, device=device)
             self.ptypes = torch.tensor(ptypes, dtype=torch.long, device=device)
-            self.kT = kT
-            self.phi = phi / (4.0 / 3.0 * math.pi * (r_d / 1000.0) ** 3)
+            self.kT: float = kT
+            # Converts volume fraction phi to number density (µm^-3) at runtime.
+            self.phi_scale: float = 1.0 / (4.0 / 3.0 * math.pi * (r_d / 1000.0) ** 3)
 
-        def forward(self, positions):
+        def forward(self, positions: torch.Tensor, phi: float) -> torch.Tensor:
             positions = positions.float() / 1000.0
             excluded_vol, _ = self.mlp.forward(self.ptypes, positions)
-            return -self.kT * self.phi * excluded_vol
+            return -self.kT * phi * self.phi_scale * excluded_vol
 
 except ImportError:
     _ML_AVAILABLE = False
@@ -270,8 +271,9 @@ class MLDepletionPotential(OpenMMNonbondedPotentialAbstract):
         type_ids = np.array(self._type_ids, dtype=np.int32)
         r_d = self._depletant_radius.value_in_unit(length_unit)
 
-        module = _MLDepletionModule(self._ml_model, type_ids, self._depletion_phi, r_d, kT)
+        module = _MLDepletionModule(self._ml_model, type_ids, r_d, kT)
         force = _TorchForce(torch.jit.script(module))
+        force.addGlobalParameter("ml_depletion_phi", self._depletion_phi)
         force.setUsesPeriodicBoundaryConditions(self._periodic_boundary_conditions)
         force.setName(self._name)
         yield force
