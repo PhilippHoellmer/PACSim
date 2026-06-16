@@ -1,0 +1,18 @@
+cluster_specifications: 
+  - __CLUSTER_NAME__
+lattice_repeats: __N_REPEATS__
+cluster_padding_factor: 1.2
+padding_factor: 1.2
+masses:
+  "1": !Quantity
+    unit: dalton
+    value: 1.0
+radii:
+  "1": !Quantity
+    unit: nanometer
+    value: 250.0
+surface_potentials:
+  "1": !Quantity
+    unit: millivolt
+    value: 0.0
+random_rotation: false

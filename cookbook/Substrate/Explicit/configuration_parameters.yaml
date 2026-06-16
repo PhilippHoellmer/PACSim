@@ -1,0 +1,47 @@
+cluster_specifications: 
+ - "cluster.lmp"
+cluster_relative_weights:
+  - 1.0
+lattice_repeats:
+  - 10
+  - 10
+  - 50
+cluster_padding_factor: 1.0
+padding_factor: 1.066170388751034
+masses:
+  "1": !Quantity
+    unit: dalton
+    value: 1.885
+  "2": !Quantity
+    unit: dalton
+    value: 1.885
+  "S": !Quantity
+    unit: dalton
+    value: 0.0
+radii:
+  "1": !Quantity
+    unit: nanometer
+    value: 105.0
+  "2": !Quantity
+    unit: nanometer
+    value: 85.0
+  "S": !Quantity
+    unit: nanometer
+    value: 30.0
+surface_potentials:
+  "1": !Quantity
+    unit: millivolt
+    value: -50.0
+  "2": !Quantity
+    unit: millivolt
+    value: 50.0
+  "S": !Quantity
+    unit: millivolt
+    value: -50.0
+random_rotation: false
+initial_modifiers: 
+    - "SubstrateModifier"
+initial_modifiers_parameters:
+  - "substrate_type": "S"
+final_modifiers: null
+final_modifiers_parameters: null
