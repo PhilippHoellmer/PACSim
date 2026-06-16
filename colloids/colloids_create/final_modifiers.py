@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Sequence
 import freud
 import numpy as np
 import gsd.hoomd
@@ -21,13 +21,14 @@ class SeedModifier(FinalModifier):
     overlap distance. Note that the surface-to-surface distance is calculated without applying periodic boundary
     conditions.
 
-    The seed positions are taken directly from the seed frame without any transformation. The base frame's box must be
-    at least as large as the seed frame's box in all dimensions. Additionally, both boxes must be orthorhombic.
+    The seed positions are taken directly from the seed frame. Optionally, it is possible to shift the seed positions
+    so that their center of mass is moved to given fractional coordinates within the base frame. The base frame's box
+    must be at least as large as the seed frame's box in all dimensions. Additionally, both boxes must be orthorhombic.
 
-    Optionally, one can filter the seed frame to keep only the largest cluster of particles before seeding. For this,
-    a cutoff distance must be provided. Two particles are considered neighbors if their distance is less than this
-    cutoff distance. The largest cluster is determined based on these neighbor relationships. If any particle in a bond
-    belongs to the largest cluster, all particles in that bond are included in the largest cluster.
+    Optionally, one can filter the seed frame to keep only the largest cluster of particles before shifting and seeding.
+    For this, a cutoff distance must be provided. Two particles are considered neighbors if their distance is less than
+    this cutoff distance. The largest cluster is determined based on these neighbor relationships. If any particle in a
+    bond belongs to the largest cluster, all particles in that bond are included in the largest cluster.
 
     This modifier requires that the frame already has diameter, charge, and mass attributes set. The diameters are
     needed for overlap detection.
@@ -39,6 +40,12 @@ class SeedModifier(FinalModifier):
         The frame index in the seed file to use. Negative indices are supported (e.g., -1 for last frame).
         Defaults to -1.
     :type seed_frame_index: int
+    :param seed_fractional_position:
+        If provided, target fractional coordinates within the base frame for the center of mass of the seed.
+        If None, leave the seed positions unchanged.
+        If not None, must be a sequence of three floats in the range [0, 1].
+        Defaults to None.
+    :type seed_fractional_position: Optional[Sequence[float]]
     :param overlap_distance:
         The overlap tolerance for determining which particles to remove. Particles are considered overlapping if their
         surface-to-surface distance is less than this value.
@@ -59,12 +66,18 @@ class SeedModifier(FinalModifier):
     """
 
     def __init__(self, seed_filename: str, seed_frame_index: int = -1,
+                 seed_fractional_position: Optional[Sequence[float]] = None,
                  overlap_distance: unit.Quantity = 0.0 * length_unit,
                  cluster_cutoff_distance: Optional[unit.Quantity] = None) -> None:
         """Constructor of the SeedModifier class."""
         super().__init__()
         if not seed_filename.endswith(".gsd"):
             raise ValueError("The seed filename must end with .gsd")
+        if seed_fractional_position is not None:
+            if len(seed_fractional_position) != 3:
+                raise ValueError("The seed fractional position must be a 3-dimensional vector.")
+            if not np.all(np.array([0.0 <= n <= 1.0 for n in seed_fractional_position])):
+                raise ValueError("The seed fractional position must be between 0 and 1 in all dimensions.")
         if not overlap_distance.unit.is_compatible(length_unit):
             raise TypeError("The overlap distance must have a unit compatible with nanometers.")
         if overlap_distance < 0.0 * length_unit:
@@ -79,6 +92,7 @@ class SeedModifier(FinalModifier):
         self._seed_frame_index = seed_frame_index
         self._cluster_cutoff_distance = (cluster_cutoff_distance.value_in_unit(length_unit)
                                          if cluster_cutoff_distance is not None else None)
+        self._seed_fractional_position = seed_fractional_position
 
     @staticmethod
     def _validate_frame_compatibility(frame: Frame, seed_frame: Frame) -> None:
@@ -229,6 +243,32 @@ class SeedModifier(FinalModifier):
         frame.bonds.types = ["b"]
         frame.bonds.typeid = np.zeros(frame.bonds.N, dtype=np.uint32)
         frame.bonds.group = frame.constraints.group.copy()
+
+    @staticmethod
+    def _reposition_seed_frame(frame: Frame, seed_frame: Frame,
+                               seed_fractional_position: Sequence[float]) -> None:
+        """
+        Modify the seed frame in-place to reposition its center of mass to the given fractional coordinates within the
+        box of the base frame.
+
+        :param frame:
+            The base frame.
+        :type frame: Frame
+        :param seed_frame:
+            The seed frame to modify.
+        :type seed_frame: Frame
+        :param seed_fractional_position:
+            The new fractional position of the center of mass of the seed frame.
+        :type seed_fractional_position: Sequence[float]
+        """
+        positions = seed_frame.particles.position
+        masses = seed_frame.particles.mass
+        center_of_mass = np.average(positions, axis=0, weights=masses)
+        # Box is assumed to be orthorombic.
+        assert np.allclose(frame.configuration.box[3:], 0.0)
+        seed_position = (np.array(seed_fractional_position) - 0.5) * frame.configuration.box[:3]
+        shift = seed_position - center_of_mass
+        seed_frame.particles.position += shift
 
     @staticmethod
     def _find_overlapping_particles(frame: Frame, seed_frame: Frame, overlap_distance: float) -> set[int]:
@@ -449,6 +489,9 @@ class SeedModifier(FinalModifier):
 
         if self._cluster_cutoff_distance is not None:
             self._filter_largest_cluster(seed_frame, self._cluster_cutoff_distance)
+
+        if self._seed_fractional_position is not None:
+            self._reposition_seed_frame(frame, seed_frame, self._seed_fractional_position)
 
         overlapping_indices = self._find_overlapping_particles(frame, seed_frame, self._overlap_distance)
         if len(overlapping_indices) > 0:
