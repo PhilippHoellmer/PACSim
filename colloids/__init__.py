@@ -6,3 +6,6 @@ from .depletion_potential import DepletionPotential
 from .gravity import Gravity
 from .walls import ShiftedLennardJonesWalls, ImplicitSubstrateWall
 from .plumed_potential import PlumedPotential
+
+
+__version__ = "1.0.0"
