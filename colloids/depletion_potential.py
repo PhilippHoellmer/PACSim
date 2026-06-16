@@ -1,9 +1,34 @@
 import math
+import numpy as np
 from typing import Iterator
 from openmm import unit
 from openmm import CustomNonbondedForce
 from colloids.abstracts import OpenMMNonbondedPotentialAbstract
 from colloids.units import energy_unit, length_unit, temperature_unit
+
+try:
+    import torch
+    import torch.nn as _nn
+    from torchmdnet.models.model import load_model as _load_model
+    from openmmtorch import TorchForce as _TorchForce
+    _ML_AVAILABLE = True
+
+    class _MLDepletionModule(_nn.Module):
+        def __init__(self, mlp_name: str, ptypes, phi: float, r_d: float, kT: float):
+            super().__init__()
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.mlp = _load_model(mlp_name, derivative=True, device=device)
+            self.ptypes = torch.tensor(ptypes, dtype=torch.long, device=device)
+            self.kT = kT
+            self.phi = phi / (4.0 / 3.0 * math.pi * (r_d / 1000.0) ** 3)
+
+        def forward(self, positions):
+            positions = positions.float() / 1000.0
+            excluded_vol, _ = self.mlp.forward(self.ptypes, positions)
+            return -self.kT * self.phi * excluded_vol
+
+except ImportError:
+    _ML_AVAILABLE = False
 
 
 class DepletionPotential(OpenMMNonbondedPotentialAbstract):
@@ -166,3 +191,91 @@ class DepletionPotential(OpenMMNonbondedPotentialAbstract):
         :type particle_two: int
         """
         self._depletion_potential.addExclusion(particle_one, particle_two)
+
+
+class MLDepletionPotential(OpenMMNonbondedPotentialAbstract):
+    """
+    ML-based depletion potential using a TorchMD-Net model and OpenMM-Torch.
+
+    Computes the depletion free energy via a pre-trained neural network instead of the
+    analytical Asakura-Oosawa expression. Requires torch, torchmdnet, and openmmtorch.
+
+    :param ml_model:
+        Path to the TorchMD-Net checkpoint file (.ckpt).
+    :type ml_model: str
+    :param depletion_phi:
+        Volume fraction of depletants. Must be between 0 and 1.
+    :type depletion_phi: float
+    :param depletant_radius:
+        Radius of the depletants. Must be compatible with nanometers.
+    :type depletant_radius: unit.Quantity
+    :param temperature:
+        System temperature. Must be compatible with kelvin.
+    :type temperature: unit.Quantity
+    :param particle_type_map:
+        Mapping from GSD particle type name (str) to ML model type index (int).
+    :type particle_type_map: dict
+    :param periodic_boundary_conditions:
+        Whether the TorchForce should use periodic boundary conditions.
+    :type periodic_boundary_conditions: bool
+    """
+
+    _name = "ml_depletion_energy"
+
+    def __init__(self, ml_model: str, depletion_phi: float, depletant_radius: unit.Quantity,
+                 temperature: unit.Quantity, particle_type_map: dict,
+                 periodic_boundary_conditions: bool = True):
+        if not _ML_AVAILABLE:
+            raise ImportError("MLDepletionPotential requires torch, torchmdnet, and openmmtorch.")
+        super().__init__()
+        if not 0.0 <= depletion_phi <= 1.0:
+            raise ValueError("depletion_phi must be between zero and one")
+        if not depletant_radius.unit.is_compatible(length_unit):
+            raise TypeError("depletant_radius must have a unit compatible with nanometers")
+        if depletant_radius <= 0.0 * length_unit:
+            raise ValueError("depletant_radius must be greater than zero")
+        if not temperature.unit.is_compatible(temperature_unit):
+            raise TypeError("temperature must have a unit compatible with kelvin")
+        if not temperature.value_in_unit(temperature_unit) > 0.0:
+            raise ValueError("temperature must be greater than zero")
+
+        self._ml_model = ml_model
+        self._depletion_phi = depletion_phi
+        self._depletant_radius = depletant_radius
+        self._temperature = temperature
+        self._particle_type_map = particle_type_map
+        self._periodic_boundary_conditions = periodic_boundary_conditions
+        self._type_ids = []
+
+    def add_particle(self, type_name: str) -> None:
+        """
+        Record the ML type index for a particle.
+
+        :param type_name:
+            GSD particle type name, looked up in the particle_type_map provided at construction.
+        :type type_name: str
+        """
+        super().add_particle()
+        self._type_ids.append(self._particle_type_map.get(type_name, 0))
+
+    def yield_potentials(self) -> Iterator:
+        """
+        Build and yield the TorchForce wrapping the ML depletion model.
+
+        Must be called after add_particle has been called for every particle.
+        """
+        super().yield_potentials()
+        kT = (unit.BOLTZMANN_CONSTANT_kB * self._temperature * unit.AVOGADRO_CONSTANT_NA
+              ).in_units_of(unit.kilojoules_per_mole)._value
+        type_ids = np.array(self._type_ids, dtype=np.int32)
+        r_d = self._depletant_radius.value_in_unit(length_unit)
+
+        module = _MLDepletionModule(self._ml_model, type_ids, self._depletion_phi, r_d, kT)
+        force = _TorchForce(torch.jit.script(module))
+        force.setUsesPeriodicBoundaryConditions(self._periodic_boundary_conditions)
+        force.setName(self._name)
+        yield force
+
+    def add_exclusion(self, particle_one: int, particle_two: int) -> None:
+        """No-op: TorchForce does not support pairwise exclusions."""
+        pass

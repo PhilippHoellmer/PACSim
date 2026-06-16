@@ -8,7 +8,8 @@ import numpy as np
 import openmm
 from openmm import app
 from colloids import (ColloidPotentialsAlgebraic, ColloidPotentialsParameters, ShiftedLennardJonesWalls,
-                      ImplicitSubstrateWall, DepletionPotential, Gravity, MagneticField, PlumedPotential)
+                      ImplicitSubstrateWall, DepletionPotential, MLDepletionPotential, Gravity, MagneticField,
+                      PlumedPotential)
 from colloids.magnetic_field import MagneticFieldTimeUpdateReporter
 from colloids.gsd_reporter import GSDReporter
 from colloids.helper_functions import get_cell_from_box, read_gsd_file, write_gsd_file
@@ -47,6 +48,33 @@ def simple_formatwarning(msg: str, category: Warning, filename: str, lineno: int
 
 
 warnings.formatwarning = simple_formatwarning
+
+
+class EnergyReporter(object):
+    """Reports per-force potential energies to a text file at a fixed interval."""
+
+    def __init__(self, file, reportInterval, system):
+        self._out = open(file, 'w')
+        self._out.write('Timestep ')
+        for f in system.getForces():
+            self._out.write('%s ' % f.getName())
+        self._out.write('\n')
+        self._reportInterval = reportInterval
+
+    def __del__(self):
+        self._out.close()
+
+    def describeNextReport(self, simulation):
+        steps = self._reportInterval - simulation.currentStep % self._reportInterval
+        return (steps, False, False, True, False, None)
+
+    def report(self, simulation, state):
+        self._out.write('%d ' % simulation.currentStep)
+        for f in simulation.system.getForces():
+            istate = simulation.context.getState(getEnergy=True, groups={f.getForceGroup()})
+            self._out.write('%.5f ' % istate.getPotentialEnergy()._value)
+        self._out.write('\n')
+        self._out.flush()
 
 
 class ExampleAction(argparse.Action):
@@ -189,10 +217,19 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         slj_walls = None
 
     if parameters.use_depletion:
-        depletion_potential = DepletionPotential(parameters.depletion_phi, parameters.depletant_radius,
-                                                 brush_length=parameters.brush_length,
-                                                 temperature=parameters.potential_temperature,
-                                                 periodic_boundary_conditions=parameters.use_pbc)
+        if parameters.ml_depletion_model is not None:
+            depletion_potential = MLDepletionPotential(
+                ml_model=parameters.ml_depletion_model,
+                depletion_phi=parameters.depletion_phi,
+                depletant_radius=parameters.depletant_radius,
+                temperature=parameters.potential_temperature,
+                particle_type_map=parameters.ml_particle_types,
+                periodic_boundary_conditions=parameters.use_pbc)
+        else:
+            depletion_potential = DepletionPotential(parameters.depletion_phi, parameters.depletant_radius,
+                                                     brush_length=parameters.brush_length,
+                                                     temperature=parameters.potential_temperature,
+                                                     periodic_boundary_conditions=parameters.use_pbc)
     else:
         depletion_potential = None
 
@@ -256,7 +293,11 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
         if include_walls and not is_substrate:
             slj_walls.add_particle(index=i, radius=radii[i])
         if parameters.use_depletion:
-            depletion_potential.add_particle(radius=radii[i], substrate_flag=is_substrate)
+            if parameters.ml_depletion_model is not None:
+                depletion_potential.add_particle(
+                    type_name=frame.particles.types[frame.particles.typeid[i]])
+            else:
+                depletion_potential.add_particle(radius=radii[i], substrate_flag=is_substrate)
         if parameters.use_gravity and not is_substrate:
             gravitational_potential.add_particle(index=i, radius=radii[i])
         if magnetic_field is not None:
@@ -319,6 +360,10 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame) -> app.
 
 def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, append_file: bool,
                      total_number_steps: int, initial_frame: gsd.hoomd.Frame) -> None:
+    if parameters.ml_depletion_model is not None:
+        simulation.reporters.append(EnergyReporter('potential-energy.txt',
+                                                    parameters.state_data_interval,
+                                                    simulation.system))
     if parameters.magnetic_field is not None:
         magnetic_field_type = parameters.magnetic_field["type"]
         if isinstance(magnetic_field_type, str):

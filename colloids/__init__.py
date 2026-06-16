@@ -2,7 +2,7 @@ from .abstracts import ColloidPotentialsAbstract, OpenMMPotentialAbstract
 from .colloid_potentials_algebraic import ColloidPotentialsAlgebraic
 from .colloid_potentials_parameters import ColloidPotentialsParameters
 from .colloid_potentials_tabulated import ColloidPotentialsTabulated
-from .depletion_potential import DepletionPotential
+from .depletion_potential import DepletionPotential, MLDepletionPotential
 from .magnetic_field import MagneticField, MagneticFieldTimeUpdateReporter
 from .gravity import Gravity
 from .walls import ShiftedLennardJonesWalls, ImplicitSubstrateWall

@@ -324,6 +324,8 @@ class RunParameters(Parameters):
     use_depletion: bool = False
     depletion_phi: Optional[float] = None
     depletant_radius: Optional[unit.Quantity] = None
+    ml_depletion_model: Optional[str] = None
+    ml_particle_types: Optional[dict] = None
     use_gravity: bool = False
     gravitational_acceleration: Optional[unit.Quantity] = None
     water_density: Optional[unit.Quantity] = None
@@ -428,6 +430,14 @@ class RunParameters(Parameters):
                 raise ValueError("Depletion phi must not be specified if depletion potential is not on.")
             if self.depletant_radius is not None:
                 raise ValueError("Depletant radius must not be specified if depletion potential is not on.")
+        if self.ml_depletion_model is not None:
+            if not self.use_depletion:
+                raise ValueError("ml_depletion_model can only be specified if use_depletion is True.")
+            if self.ml_particle_types is None:
+                raise ValueError("ml_particle_types must be specified when ml_depletion_model is set.")
+        else:
+            if self.ml_particle_types is not None:
+                raise ValueError("ml_particle_types must not be specified if ml_depletion_model is not set.")
         if self.use_implicit_substrate:
             if not self.wall_directions[-1]:
                 raise ValueError("The z wall must be active if using an implicit substrate.")
