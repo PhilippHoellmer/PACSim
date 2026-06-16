@@ -26,4 +26,4 @@ pacsim-run = "colloids.colloids_run:main"
 pacsim-create = "colloids.colloids_create.colloids_create:main"
 
 [tool.setuptools.packages.find]
-exclude = ["Literature", "jupyter-scripts"]
+where = ["."]
