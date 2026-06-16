@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PACSim"
+name = "pacsim"
 readme = "README.md"
 requires-python = ">=3.10"
 version = "0.0.1"
