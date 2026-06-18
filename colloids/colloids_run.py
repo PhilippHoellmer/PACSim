@@ -70,9 +70,17 @@ def initialize_integrators(parameters: RunParameters):
 
 def initialize_barostat(parameters: RunParameters):
     """Instantiate the optional barostat at the start of a run."""
-    if parameters.barostat is None:
+    if parameters.npt_pressure is None:
         return None
-    return integrators.INTEGRATORS[parameters.barostat](**parameters.barostat_parameters)
+    temperature = parameters.potential_temperature
+    if isinstance(parameters.npt_pressure, list):
+        pressure_x, pressure_y, pressure_z = parameters.npt_pressure
+        scale = parameters.npt_scale if parameters.npt_scale is not None else [True, True, True]
+        return integrators.MonteCarloAnisotropicBarostat(
+            temperature, pressure_x, pressure_y, pressure_z,
+            scale[0], scale[1], scale[2], parameters.npt_frequency
+        )
+    return integrators.MonteCarloBarostat(temperature, parameters.npt_pressure, parameters.npt_frequency)
 
 
 def check_frame(parameters: RunParameters, frame: gsd.hoomd.Frame) -> None:

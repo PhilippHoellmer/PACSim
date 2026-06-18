@@ -68,27 +68,51 @@ class TestIntegrators(object):
         assert integrator_objects == {"AlphaIntegrator": "AlphaIntegrator", "BetaIntegrator": "BetaIntegrator"}
         assert calls == [("AlphaIntegrator", {"value": 1}), ("BetaIntegrator", {"value": 2})]
 
-    def test_initialize_barostat_builds_optional_barostat(self, monkeypatch):
-        calls = []
-
-        def fake_barostat(**kwargs):
-            calls.append(kwargs)
-            return "barostat"
-
-        monkeypatch.setitem(integrators.INTEGRATORS, "MonteCarloBarostat", fake_barostat)
-
+    def test_initialize_barostat_isotropic(self):
         parameters = RunParameters(
             initial_configuration="first_frame.gsd",
-            barostat="MonteCarloBarostat",
-            barostat_parameters={"temperature": 300.0 * unit.kelvin, "pressure": 1.0 * unit.bar,
-                                 "frequency": 25},
+            npt_pressure=1.0 * unit.bar,
+            npt_frequency=25,
         )
-
-        calls.clear()
         barostat = initialize_barostat(parameters)
+        assert isinstance(barostat, openmm.MonteCarloBarostat)
+        assert barostat.getDefaultPressure().value_in_unit(unit.bar) == pytest.approx(1.0)
+        assert barostat.getFrequency() == 25
 
-        assert barostat == "barostat"
-        assert calls == [{"temperature": 300.0 * unit.kelvin, "pressure": 1.0 * unit.bar, "frequency": 25}]
+    def test_initialize_barostat_anisotropic_with_scale(self):
+        parameters = RunParameters(
+            initial_configuration="first_frame.gsd",
+            npt_pressure=[1.0 * unit.bar, 2.0 * unit.bar, 3.0 * unit.bar],
+            npt_frequency=25,
+            npt_scale=[True, True, False],
+        )
+        barostat = initialize_barostat(parameters)
+        assert isinstance(barostat, openmm.MonteCarloAnisotropicBarostat)
+        default_pressure = barostat.getDefaultPressure()
+        assert default_pressure.x == pytest.approx(1.0)
+        assert default_pressure.y == pytest.approx(2.0)
+        assert default_pressure.z == pytest.approx(3.0)
+        assert barostat.getFrequency() == 25
+        assert barostat.getScaleX() is True
+        assert barostat.getScaleY() is True
+        assert barostat.getScaleZ() is False
+
+    def test_initialize_barostat_anisotropic_default_scale(self):
+        parameters = RunParameters(
+            initial_configuration="first_frame.gsd",
+            npt_pressure=[1.0 * unit.bar, 1.0 * unit.bar, 1.0 * unit.bar],
+            npt_frequency=25,
+        )
+        barostat = initialize_barostat(parameters)
+        assert isinstance(barostat, openmm.MonteCarloAnisotropicBarostat)
+        assert barostat.getFrequency() == 25
+        assert barostat.getScaleX() is True
+        assert barostat.getScaleY() is True
+        assert barostat.getScaleZ() is True
+
+    def test_initialize_barostat_none(self):
+        parameters = RunParameters(initial_configuration="first_frame.gsd")
+        assert initialize_barostat(parameters) is None
 
 
 if __name__ == '__main__':
