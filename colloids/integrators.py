@@ -329,8 +329,11 @@ def MonteCarloBarostat(temperature: unit.Quantity, pressure: unit.Quantity, freq
         The Monte Carlo barostat.
     :rtype: openmm.Force
     """
-    # Checks of units and values are done within OpenMM.
-    return openmm.MonteCarloBarostat(pressure, temperature, frequency)
+    return openmm.MonteCarloBarostat(
+        pressure.value_in_unit(unit.bar),
+        temperature.value_in_unit(unit.kelvin),
+        frequency,
+    )
 
 
 # noinspection PyPep8Naming
@@ -372,10 +375,11 @@ def MonteCarloAnisotropicBarostat(temperature: unit.Quantity, pressure_x: unit.Q
         The Monte Carlo anisotropic barostat.
     :rtype: openmm.Force
     """
-    # Checks of units and values are done within OpenMM.
     pressure = openmm.Vec3(pressure_x.value_in_unit(unit.bar), pressure_y.value_in_unit(unit.bar),
                            pressure_z.value_in_unit(unit.bar))
-    return openmm.MonteCarloAnisotropicBarostat(pressure, temperature, scale_x, scale_y, scale_z, frequency)
+    return openmm.MonteCarloAnisotropicBarostat(
+        pressure, temperature.value_in_unit(unit.kelvin), scale_x, scale_y, scale_z, frequency
+    )
 
 
 # noinspection PyPep8Naming
