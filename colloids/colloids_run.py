@@ -326,11 +326,14 @@ def set_up_simulation(parameters: RunParameters, frame: gsd.hoomd.Frame, integra
 
 def set_up_reporters(parameters: RunParameters, simulation: app.Simulation, append_file: bool,
                      total_number_steps: int, initial_frame: gsd.hoomd.Frame) -> None:
+    # Pass cell=None when no walls enlarge the OpenMM box so the reporter reads the live box from the
+    # simulation state each frame (required for NPT where the box changes).
+    gsd_cell = (get_cell_from_box(initial_frame.configuration.box) * length_unit
+                if any(parameters.wall_directions) else None)
     simulation.reporters.append(GSDReporter(parameters.trajectory_filename, parameters.trajectory_interval,
                                             initial_frame.particles.diameter / 2.0 * length_unit,
                                             initial_frame.particles.charge * electric_potential_unit, simulation,
-                                            append_file=append_file,
-                                            cell=get_cell_from_box(initial_frame.configuration.box) * length_unit))
+                                            append_file=append_file, cell=gsd_cell))
     simulation.reporters.append(StatusReporter(max(1, total_number_steps // 100), total_number_steps,
                                                desc="Production"))
     simulation.reporters.append(app.statedatareporter.StateDataReporter(parameters.state_data_filename, parameters.state_data_interval,
@@ -418,10 +421,14 @@ def colloids_run(argv: Sequence[str]) -> app.Simulation:
     simulation.step(parameters.run_steps)
 
     if parameters.final_configuration_gsd_filename is not None:
+        if any(parameters.wall_directions):
+            final_cell = get_cell_from_box(frame.configuration.box) * length_unit
+        else:
+            final_cell = simulation.context.getState().getPeriodicBoxVectors()
         write_gsd_file(parameters.final_configuration_gsd_filename, simulation,
                        frame.particles.diameter / 2.0 * length_unit,
                        frame.particles.charge * electric_potential_unit,
-                       get_cell_from_box(frame.configuration.box) * length_unit)
+                       final_cell)
 
     return simulation
 

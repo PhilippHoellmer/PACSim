@@ -297,7 +297,10 @@ class Parameters(object):
                 The openmm quantity.
             :rtype: unit.Quantity
             """
-            return unit.Quantity(self.value, self._openmm_unit_from_string(self.unit))
+            # PyYAML's YAML 1.1 float resolver requires a decimal point, so values
+            # like '1e-10' (no decimal) are parsed as strings rather than floats.
+            # Casting through float() here normalises both strings and ints.
+            return unit.Quantity(float(self.value), self._openmm_unit_from_string(self.unit))
 
         @classmethod
         def _openmm_unit_from_string(cls, unit_string: str) -> unit.Unit:
