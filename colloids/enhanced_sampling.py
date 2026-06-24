@@ -203,7 +203,8 @@ class MetadynamicsReporter(object):
         self._print_interval = print_interval
         self._file = open(filename, "a" if append_file else "w")
         if not append_file:
-            print("timestep,cv,bias", file=self._file, flush=True)
+            cv_names = [f"cv{i + 1}" for i in range(len(self._metad.variables))]
+            print(",".join(["timestep", *cv_names, "bias"]), file=self._file, flush=True)
     
     # noinspection PyPep8Naming
     def describeNextReport(self, simulation: openmm.app.Simulation) -> tuple[int, bool, bool, bool, bool, bool]:
@@ -229,24 +230,24 @@ class MetadynamicsReporter(object):
 
     def report(self, simulation: openmm.app.Simulation, state: openmm.State) -> None:
         
-        cv_val = self._metad.getCollectiveVariables(simulation)[0]
+        cv_values = self._metad.getCollectiveVariables(simulation)
         
         force_group = self._metad._force.getForceGroup()
         bias_state = simulation.context.getState(getEnergy=True,groups={force_group})
         bias_energy = bias_state.getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole)
         
-        self.print(simulation, cv_val, bias_energy)
+        self.print(simulation, cv_values, bias_energy)
     
-    def print(self, simulation: openmm.app.Simulation, cv_value: float, bias_value: float) -> None:
+    def print(self, simulation: openmm.app.Simulation, cv_values: list[float], bias_value: float) -> None:
         """
         Print the CV and bias values in the output csv file.
 
         :param simulation:
             The OpenMM simulation.
         :type simulation: openmm.app.Simulation
-        :param cv_value:
-            The value of the CV.
-        :type cv_value: float
+        :param cv_values:
+            The values of the biased CVs.
+        :type cv_values: list[float]
         :param bias_value: 
             The value of the restraint bias (dimensionless, but units correspond to the energy units
             in the simulation).
@@ -254,7 +255,8 @@ class MetadynamicsReporter(object):
         """
         step = simulation.currentStep
         if step % self._print_interval == 0:
-            print(f"{step},{cv_value},{bias_value}", file=self._file, flush=True)
+            values = [step, *cv_values, bias_value]
+            print(",".join(str(value) for value in values), file=self._file, flush=True)
 
     def __del__(self) -> None:
         """Destructor of the MetadynamicsReporter class."""
