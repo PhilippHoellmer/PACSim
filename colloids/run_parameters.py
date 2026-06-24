@@ -490,6 +490,11 @@ class RunParameters(Parameters):
         if self.add_restraint:
             if self.restraint_parameters is None:
                 raise ValueError("Restraint parameters must be specified if adding restraint.")
+            restraint_type = self.restraint_parameters.get("restraint_type")
+            if restraint_type not in ["umbrella", "metadynamics"]:
+                raise ValueError("Restraint type must be either 'umbrella' or 'metadynamics'.")
+            if "bias_variables" not in self.restraint_parameters:
+                raise ValueError("Bias variables must be specified if adding restraint.")
       
 if __name__ == '__main__':
     RunParameters(initial_configuration="tests/first_frame.xyz").to_yaml("example.yaml")

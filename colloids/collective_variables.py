@@ -10,11 +10,13 @@ from colloids.helper_functions import get_cell_from_box
 from colloids.units import length_unit
 
 from openmm import CustomGBForce, CustomCVForce
-from openmmtorch import TorchForce
 
-import torch
-from .rsh import rsh_cart_6
-
+try:
+    from openmmtorch import TorchForce
+    import torch
+    from .rsh import rsh_cart_6
+except ModuleNotFoundError:
+    pass
 
 _EPSILON = 1e-12
 
@@ -247,6 +249,136 @@ class HighCoordCompositionCV(OpenMMCollectiveVariableAbstract):
         
         return x_force
     
+
+class HighCoordDensityCV(OpenMMCollectiveVariableAbstract):
+    """
+    Smooth density CV: counts particles in locally dense/high-coordination environments.
+
+    N_p = sum_i s(n_i - n_threshold)
+
+    where n_i is a smooth coordination number around particle i.
+    """
+
+    def __init__(
+        self,
+        topology: openmm.app.Topology,
+        system: openmm.System,
+        coordination_d0: unit.Quantity,
+        coordination_r0: unit.Quantity,
+        coordination_dmax: unit.Quantity,
+        highcoord_threshold: float,
+        ignore_types: Optional[Sequence[str]] = None,
+    ):
+        super().__init__(topology=topology, system=system)
+
+        self._uses_pbc = system.usesPeriodicBoundaryConditions()
+        self._particle_types = [atom.name for atom in topology.atoms()]
+
+        if highcoord_threshold <= 0:
+            raise ValueError("The high coordination threshold must be positive.")
+
+        if not all(
+            param.unit.is_compatible(length_unit)
+            for param in (coordination_r0, coordination_d0, coordination_dmax)
+        ):
+            raise TypeError("Switching function parameters must have length units.")
+
+        if (
+            coordination_r0.value_in_unit(length_unit) <= 0
+            or coordination_d0.value_in_unit(length_unit) <= 0
+            or coordination_dmax.value_in_unit(length_unit) <= 0
+        ):
+            raise ValueError("Switching function parameters must be positive.")
+
+        self._coordination_d0 = coordination_d0
+        self._coordination_r0 = coordination_r0
+        self._coordination_dmax = coordination_dmax
+        self._highcoord_threshold = highcoord_threshold
+        self._nn_high_coord = 12
+
+        self._ignore_types = ignore_types
+        self._include_particles = []
+
+        for particle_type in self._particle_types:
+            if self._ignore_types is None:
+                include_particle = 1
+            else:
+                include_particle = int(particle_type not in self._ignore_types)
+
+            self._include_particles.append(include_particle)
+
+    def compute_cv(self, name: str = "highcoord_density") -> openmm.Force:
+        force = CustomGBForce()
+        force.setName(name)
+
+        force.addGlobalParameter(
+            "coordination_d0",
+            self._coordination_d0.value_in_unit(length_unit),
+        )
+        force.addGlobalParameter(
+            "coordination_r0",
+            self._coordination_r0.value_in_unit(length_unit),
+        )
+        force.addGlobalParameter(
+            "coordination_dmax",
+            self._coordination_dmax.value_in_unit(length_unit),
+        )
+        force.addGlobalParameter("highcoord_threshold", self._highcoord_threshold)
+        force.addGlobalParameter("nn", self._nn_high_coord)
+        force.addGlobalParameter("eps", _EPSILON)
+
+        force.addPerParticleParameter("include_particles")
+
+        s_r_exp = SwitchingFunctions.get_exponential_switching_function_str(
+            r="r",
+            d0="coordination_d0",
+            r0="coordination_r0",
+            dmax="coordination_dmax",
+        )
+
+        high_coord = SwitchingFunctions.get_more_than_str(
+            x="coord",
+            threshold="highcoord_threshold",
+            nn="nn",
+        )
+
+        # coord_i = smooth count of included neighbors around particle i.
+        force.addComputedValue(
+            "coord",
+            f"include_particles2 * ({s_r_exp})",
+            CustomGBForce.ParticlePairNoExclusions,
+        )
+
+        # N_p = sum_i include_i * smooth_indicator(coord_i > threshold)
+        force.addEnergyTerm(
+            f"include_particles * ({high_coord})",
+            CustomGBForce.SingleParticle,
+        )
+
+        for include_particle in self._include_particles:
+            force.addParticle([include_particle])
+
+        if self._uses_pbc:
+            force.setNonbondedMethod(CustomGBForce.CutoffPeriodic)
+        else:
+            force.setNonbondedMethod(CustomGBForce.CutoffNonPeriodic)
+
+        force.setCutoffDistance(
+            self._coordination_dmax.value_in_unit(length_unit)
+        )
+
+        return force
+
+    def get_force(self) -> openmm.CustomCVForce:
+        highcoord_density = self.compute_cv(name="highcoord_density_raw")
+
+        cv_force = CustomCVForce("highcoord_density")
+        cv_force.setName("highcoord_density_cv")
+        cv_force.addCollectiveVariable("highcoord_density", highcoord_density)
+
+        return cv_force
+    
+    
 class XPositionCV(OpenMMCollectiveVariableAbstract):
     """Simple scalar CV for tests: x position of one particle."""
 
@@ -263,7 +395,7 @@ class XPositionCV(OpenMMCollectiveVariableAbstract):
         return self.compute_cv()
 
 
-class SteinhardtOrderModule(torch.nn.Module):
+'''class SteinhardtOrderModule(torch.nn.Module):
     def __init__(self, num_nbs, order, r0, d0):
         super().__init__()
         if torch.cuda.is_available():
@@ -339,5 +471,5 @@ class SteinhardtOrderCV(OpenMMCollectiveVariableAbstract):
         return cv_force
 
     def get_force(self) -> openmm.Force:
-        return self.compute_cv()
+        return self.compute_cv()'''
          
